@@ -31,14 +31,24 @@ function deriveRagUrl(ollamaUrl: string) {
   }
 }
 
-/** Resolve a citation URL against a base; if already absolute, return as-is. */
+/** Resolve a citation URL to use the given base (user's app URL + RAG port). Absolute URLs from the RAG server are rewritten to use the base so links don't show localhost. */
 function resolveCitationUrl(base: string, url: string): string {
   const u = (url || "").trim();
   if (!u || u === "#") return "#";
-  if (/^https?:\/\//i.test(u)) return u;
   const b = base.replace(/\/$/, "");
-  const path = u.startsWith("/") ? u : `/${u}`;
-  return b ? `${b}${path}` : u;
+  if (!b) return u;
+  let path: string;
+  if (/^https?:\/\//i.test(u)) {
+    try {
+      const parsed = new URL(u);
+      path = parsed.pathname + parsed.search + parsed.hash;
+    } catch {
+      path = u.startsWith("/") ? u : `/${u}`;
+    }
+  } else {
+    path = u.startsWith("/") ? u : `/${u}`;
+  }
+  return `${b}${path}`;
 }
 
 /** Document/citation base URL: user's app URL (no port) with the port from the RAG server URL, so links work behind proxies. */
