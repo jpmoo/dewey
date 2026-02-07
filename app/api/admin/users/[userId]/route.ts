@@ -28,8 +28,14 @@ export async function GET(
   }
   try {
     const settings = await getSettings(userId);
+    const displayName = user.username ?? user.email ?? user.name ?? `User ${user.id}`;
     return NextResponse.json({
-      user: { id: user.id, username: user.username, created_at: user.created_at },
+      user: {
+        id: user.id,
+        username: displayName,
+        created_at: user.created_at,
+        auth_provider: user.auth_provider ?? "dewey",
+      },
       settings,
     });
   } catch (e) {
@@ -103,6 +109,9 @@ export async function DELETE(
   const id = parseInt(userId, 10);
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: "Invalid user id" }, { status: 400 });
+  }
+  if (id === 1) {
+    return NextResponse.json({ error: "User 1 cannot be deleted" }, { status: 403 });
   }
   const user = await getUserById(id);
   if (!user) {

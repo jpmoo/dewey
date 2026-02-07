@@ -3,7 +3,8 @@ import AppleProvider from "next-auth/providers/apple";
 import GoogleProvider from "next-auth/providers/google";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { getUserByUsername } from "@/lib/db";
+import type { AuthProvider } from "@/lib/db";
+import { findUserByOAuth, createUserForOAuth, getUserByUsername } from "@/lib/db";
 import { getDefaultSettingsFromEnv, getSettings, setSettings } from "@/lib/settings";
 import { verifyPassword } from "@/lib/password";
 
@@ -46,7 +47,7 @@ providers.push(
     async authorize(credentials) {
       if (!credentials?.username || !credentials?.password) return null;
       const user = await getUserByUsername(credentials.username);
-      if (!user) return null;
+      if (!user || !user.password_hash) return null;
       const ok = await verifyPassword(credentials.password, user.password_hash);
       if (!ok) return null;
       const userId = String(user.id);
@@ -78,24 +79,34 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
-        token.sub = user.id;
+        const provider = account?.provider as string | undefined;
+        const isOAuth = provider && provider !== "dewey" && ["google", "azure-ad", "apple"].includes(provider);
+        let ourUserId: string;
+        if (isOAuth) {
+          let ourUser = await findUserByOAuth(provider as AuthProvider, user.id);
+          if (!ourUser) {
+            ourUser = await createUserForOAuth({
+              auth_provider: provider as AuthProvider,
+              provider_id: user.id,
+              email: user.email ?? null,
+              name: user.name ?? null,
+            });
+          }
+          ourUserId = String(ourUser.id);
+          const existing = await getSettings(ourUserId);
+          if (Object.keys(existing).length === 0) {
+            await setSettings(ourUserId, { ...getDefaultSettingsFromEnv(), is_system_admin: false });
+          }
+        } else {
+          ourUserId = user.id;
+        }
+        const settings = await getSettings(ourUserId);
+        token.sub = ourUserId;
         token.name = user.name;
         token.email = user.email ?? null;
-        token.is_system_admin = "is_system_admin" in user ? user.is_system_admin : false;
-        // Ensure OAuth users (Google, etc.) have a settings entry on first sign-in
-        if (user.id) {
-          try {
-            const existing = await getSettings(user.id);
-            const hasAny = Object.keys(existing).length > 0;
-            if (!hasAny) {
-              await setSettings(user.id, { ...getDefaultSettingsFromEnv(), is_system_admin: false });
-            }
-          } catch {
-            // ignore
-          }
-        }
+        token.is_system_admin = settings.is_system_admin === true;
       }
       return token;
     },

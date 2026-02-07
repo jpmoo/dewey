@@ -68,7 +68,9 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
     if (arr.length) out.ragCollections = arr;
   }
   const systemMsg = process.env.DEWEY_DEFAULT_SYSTEM_MESSAGE;
-  if (systemMsg != null && systemMsg !== "") out.systemMessage = systemMsg;
+  if (systemMsg != null && systemMsg !== "") {
+    out.systemMessage = systemMsg.replace(/\\n/g, "\n");
+  }
   return out;
 }
 

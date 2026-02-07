@@ -2,15 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+type AuthProviderLabel = "Dewey account" | "Google" | "Microsoft" | "Apple";
+
+const AUTH_PROVIDER_LABELS: Record<string, AuthProviderLabel> = {
+  dewey: "Dewey account",
+  google: "Google",
+  "azure-ad": "Microsoft",
+  apple: "Apple",
+};
+
 type UserRow = {
   id: number;
   username: string;
   created_at: string;
+  auth_provider?: string;
   is_system_admin: boolean; // from settings
 };
 
 type UserWithSettings = {
-  user: { id: number; username: string; created_at: string };
+  user: { id: number; username: string; created_at: string; auth_provider?: string };
   settings: Record<string, unknown>;
 };
 
@@ -143,6 +153,9 @@ export function AdminUserManager() {
           >
             <div>
               <span className="font-medium">{u.username}</span>
+              <span className="ml-2 text-xs text-dewey-mute">
+                ({AUTH_PROVIDER_LABELS[u.auth_provider ?? "dewey"] ?? u.auth_provider})
+              </span>
               {u.is_system_admin && (
                 <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">
                   Admin
@@ -167,6 +180,11 @@ export function AdminUserManager() {
           >
             <h2 className="text-lg font-semibold mb-4">
               Edit user: {editData.user.username}
+              {editData.user.auth_provider && editData.user.auth_provider !== "dewey" && (
+                <span className="ml-2 text-sm font-normal text-dewey-mute">
+                  ({AUTH_PROVIDER_LABELS[editData.user.auth_provider] ?? editData.user.auth_provider})
+                </span>
+              )}
             </h2>
             <div className="space-y-4">
               <label className="flex items-center gap-2">
@@ -353,9 +371,10 @@ export function AdminUserManager() {
             <div className="flex gap-2 mt-6 justify-between">
               <button
                 type="button"
-                className="px-4 py-2 border border-red-200 text-red-700 rounded hover:bg-red-50"
+                className="px-4 py-2 border border-red-200 text-red-700 rounded hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => setDeleteConfirmOpen(true)}
-                disabled={deleting}
+                disabled={deleting || editingUserId === 1}
+                title={editingUserId === 1 ? "User 1 cannot be deleted" : undefined}
               >
                 Delete account
               </button>

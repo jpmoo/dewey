@@ -22,6 +22,7 @@ export async function GET() {
           id: u.id,
           username: u.username,
           created_at: u.created_at,
+          auth_provider: u.auth_provider,
           is_system_admin: settings.is_system_admin ?? false,
         };
       })
