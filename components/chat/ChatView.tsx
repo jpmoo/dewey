@@ -127,10 +127,7 @@ export function ChatView() {
     setTheme(THEME_ORDER.includes(t) ? t : "light");
     const fs = parseInt((load("chatFontSize", String(CHAT_FONT_DEFAULT)) as string), 10);
     setChatFontSize(Number.isFinite(fs) && fs >= CHAT_FONT_MIN && fs <= CHAT_FONT_MAX ? fs : CHAT_FONT_DEFAULT);
-    setUserPreferredName((load("userPreferredName", "") as string));
-    setUserSchoolOrOffice((load("userSchoolOrOffice", "") as string));
-    setUserRole((load("userRole", "") as string));
-    setUserContext((load("userContext", "") as string));
+    // Do not load "about you" from localStorage — it's not keyed by user, so would show previous user's data. Load from API only when authenticated.
   }, []);
 
   useEffect(() => {
@@ -154,10 +151,10 @@ export function ChatView() {
         if (Array.isArray(data.systemMessageHistory)) setSystemHistory(data.systemMessageHistory);
         if (typeof data.theme === "string" && THEME_ORDER.includes(data.theme)) setTheme(data.theme);
         if (typeof data.chatFontSize === "number" && data.chatFontSize >= CHAT_FONT_MIN && data.chatFontSize <= CHAT_FONT_MAX) setChatFontSize(data.chatFontSize);
-        if (typeof data.userPreferredName === "string") setUserPreferredName(data.userPreferredName);
-        if (typeof data.userSchoolOrOffice === "string") setUserSchoolOrOffice(data.userSchoolOrOffice);
-        if (typeof data.userRole === "string") setUserRole(data.userRole);
-        if (typeof data.userContext === "string") setUserContext(data.userContext);
+        setUserPreferredName(typeof data.userPreferredName === "string" ? data.userPreferredName : "");
+        setUserSchoolOrOffice(typeof data.userSchoolOrOffice === "string" ? data.userSchoolOrOffice : "");
+        setUserRole(typeof data.userRole === "string" ? data.userRole : "");
+        setUserContext(typeof data.userContext === "string" ? data.userContext : "");
         const ollamaUrlToCheck = typeof data.ollamaUrl === "string" ? data.ollamaUrl.trim() : "";
         if (ollamaUrlToCheck) {
           fetch("/api/chat/ollama/tags", {
