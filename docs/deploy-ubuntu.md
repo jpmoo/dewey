@@ -1,6 +1,20 @@
 # Running Dewey persistently on Ubuntu (headless)
 
-Use **production** mode (`npm run build` + `npm start`), not `npm run dev`. Then run it under systemd so it restarts on failure and on reboot.
+Use **production** mode (`npm run build` + `npm start`), not `npm run dev`. Then run it under systemd (or nohup) so it keeps running after you disconnect.
+
+## Quick nohup (no systemd)
+
+Run the Next server **directly** so it survives closing SSH (more reliable than `nohup npm start`):
+
+```bash
+cd /path/to/Dewey
+npm run build
+nohup node node_modules/.bin/next start > nohup.out 2>&1 &
+```
+
+Check it’s running: `cat nohup.out` and `pgrep -af next`. Use `PORT=3000` before `nohup` if you need a specific port.
+
+---
 
 ## 1. Build the app (once, and after each deploy)
 

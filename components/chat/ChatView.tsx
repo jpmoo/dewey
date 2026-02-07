@@ -694,7 +694,7 @@ export function ChatView() {
                 />
               </div>
                   <div className="chat-form-group">
-                    <label className="chat-form-label">What school or office do you work in?</label>
+                    <label className="chat-form-label">Your school or office</label>
                     <input
                       type="text"
                       className="chat-form-input"
@@ -704,7 +704,7 @@ export function ChatView() {
                     />
                   </div>
                   <div className="chat-form-group">
-                    <label className="chat-form-label">What&apos;s your role there?</label>
+                    <label className="chat-form-label">Your role</label>
                     <input
                       type="text"
                       className="chat-form-input"
@@ -714,7 +714,7 @@ export function ChatView() {
                     />
                   </div>
                   <div className="chat-form-group">
-                    <label className="chat-form-label">Tell me a bit about your school or office that&apos;s important to keep in mind.</label>
+                    <label className="chat-form-label">Give me some information about your school or office.</label>
                     <textarea
                       className="chat-form-input chat-panel-context-textarea"
                       placeholder="e.g. We're a K–12 district with three elementary schools, one middle, one high. We're piloting a new SEL initiative this year."
@@ -843,7 +843,7 @@ export function ChatView() {
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 10 }}>
-                <label className="chat-form-label">School or office</label>
+                <label className="chat-form-label">Your school or office</label>
                 <input
                   type="text"
                   className={`chat-form-input ${showIntroValidation && !userSchoolOrOffice.trim() ? "intro-field-error" : ""}`}
@@ -853,7 +853,7 @@ export function ChatView() {
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 10 }}>
-                <label className="chat-form-label">Role</label>
+                <label className="chat-form-label">Your role</label>
                 <input
                   type="text"
                   className={`chat-form-input ${showIntroValidation && !userRole.trim() ? "intro-field-error" : ""}`}
@@ -863,7 +863,7 @@ export function ChatView() {
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 12 }}>
-                <label className="chat-form-label">Context about your school or office</label>
+                <label className="chat-form-label">Give me some information about your school or office.</label>
                 <textarea
                   className={`chat-form-input ${showIntroValidation && !userContext.trim() ? "intro-field-error" : ""}`}
                   placeholder="e.g. K–12 district, three elementary, one middle, one high..."
