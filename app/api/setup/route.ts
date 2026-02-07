@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createUser } from "@/lib/db";
-import { hasSystemAdmin, setSettings } from "@/lib/settings";
+import { getDefaultSettingsFromEnv, hasSystemAdmin, setSettings } from "@/lib/settings";
 import { hashPassword } from "@/lib/password";
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       username,
       password_hash,
     });
-    await setSettings(String(user.id), { is_system_admin: true });
+    await setSettings(String(user.id), { ...getDefaultSettingsFromEnv(), is_system_admin: true });
     return NextResponse.json({ ok: true, userId: user.id });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to create user";

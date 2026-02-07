@@ -76,3 +76,12 @@ export async function createUser(params: {
   await writeUsers(users);
   return user;
 }
+
+export async function deleteUser(id: number): Promise<boolean> {
+  const users = await readUsers();
+  const idx = users.findIndex((u) => u.id === id);
+  if (idx === -1) return false;
+  users.splice(idx, 1);
+  await writeUsers(users);
+  return true;
+}

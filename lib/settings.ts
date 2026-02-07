@@ -50,6 +50,28 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
   return all[userId] ?? {};
 }
 
+/** Default settings from env (DEWEY_DEFAULT_*). Applied to new accounts. */
+export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
+  const out: Partial<ChatSettings> = {};
+  const ollama = process.env.DEWEY_DEFAULT_OLLAMA_URL?.trim();
+  if (ollama) out.ollamaUrl = ollama;
+  const rag = process.env.DEWEY_DEFAULT_RAG_SERVER_URL?.trim();
+  if (rag) out.ragServerUrl = rag;
+  const thresh = process.env.DEWEY_DEFAULT_RAG_THRESHOLD;
+  if (thresh !== undefined && thresh !== "") {
+    const n = parseFloat(thresh);
+    if (Number.isFinite(n)) out.ragThreshold = n;
+  }
+  const collections = process.env.DEWEY_DEFAULT_RAG_COLLECTIONS?.trim();
+  if (collections) {
+    const arr = collections.split(",").map((s) => s.trim()).filter(Boolean);
+    if (arr.length) out.ragCollections = arr;
+  }
+  const systemMsg = process.env.DEWEY_DEFAULT_SYSTEM_MESSAGE;
+  if (systemMsg != null && systemMsg !== "") out.systemMessage = systemMsg;
+  return out;
+}
+
 /** True if any user has is_system_admin in settings (used for first-time setup vs register). */
 export async function hasSystemAdmin(): Promise<boolean> {
   const all = await readAll();
@@ -69,4 +91,11 @@ export async function setSettings(userId: string, partial: Partial<ChatSettings>
   all[userId] = next;
   await writeAll(all);
   return next;
+}
+
+export async function deleteSettings(userId: string): Promise<void> {
+  const all = await readAll();
+  if (!(userId in all)) return;
+  delete all[userId];
+  await writeAll(all);
 }

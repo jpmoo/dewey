@@ -69,6 +69,7 @@ export function ChatView() {
   const [dialogModelConnection, setDialogModelConnection] = useState(false);
   const [dialogDeleteConfirm, setDialogDeleteConfirm] = useState(false);
   const [dialogNewConversationConfirm, setDialogNewConversationConfirm] = useState(false);
+  const [dialogIntroSignOutConfirm, setDialogIntroSignOutConfirm] = useState(false);
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introDraft, setIntroDraft] = useState("");
   const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
@@ -805,7 +806,7 @@ export function ChatView() {
               Welcome{userPreferredName.trim() ? `, ${userPreferredName.trim()}` : session?.user?.name || session?.user?.email ? `, ${session?.user?.name || session?.user?.email}` : ""}!
             </h3>
             <p className="chat-dialog-message" style={{ marginBottom: 12 }}>
-              Please provide a detailed introduction to your question, problem, or conversation topic for this session.
+              Please provide a detailed introduction to your question, problem, or conversation topic for this session. All fields below are required.
             </p>
             <textarea
               className="chat-dialog-textarea"
@@ -815,7 +816,7 @@ export function ChatView() {
               onChange={(e) => setIntroDraft(e.target.value)}
             />
             <div className="chat-dialog-intro-panel">
-              <p className="chat-form-label" style={{ marginBottom: 8 }}>About you (optional)</p>
+              <p className="chat-form-label" style={{ marginBottom: 8 }}>About you</p>
               <div className="chat-form-group" style={{ marginBottom: 10 }}>
                 <label className="chat-form-label">Preferred name</label>
                 <input
@@ -857,14 +858,50 @@ export function ChatView() {
                 />
               </div>
             </div>
-            <div className="chat-dialog-buttons">
+            <div className="chat-dialog-buttons" style={{ flexWrap: "wrap", gap: 8 }}>
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-cancel"
+                onClick={() => setDialogIntroSignOutConfirm(true)}
+              >
+                Sign out
+              </button>
               <button
                 type="button"
                 className="chat-dialog-btn chat-dialog-btn-save"
                 onClick={() => submitIntro()}
-                disabled={!introDraft.trim() || loading}
+                disabled={
+                  loading ||
+                  !introDraft.trim() ||
+                  !userPreferredName.trim() ||
+                  !userSchoolOrOffice.trim() ||
+                  !userRole.trim() ||
+                  !userContext.trim()
+                }
               >
                 Start conversation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dialogIntroSignOutConfirm && (
+        <div className="chat-dialog-overlay" onClick={() => setDialogIntroSignOutConfirm(false)}>
+          <div className="chat-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="chat-dialog-title">Sign out?</h3>
+            <p className="chat-dialog-message">You&apos;ll need to sign in again to continue.</p>
+            <div className="chat-dialog-buttons">
+              <button type="button" className="chat-dialog-btn chat-dialog-btn-cancel" onClick={() => setDialogIntroSignOutConfirm(false)}>Cancel</button>
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-save"
+                onClick={() => {
+                  setDialogIntroSignOutConfirm(false);
+                  signOut({ callbackUrl: "/" });
+                }}
+              >
+                Sign out
               </button>
             </div>
           </div>

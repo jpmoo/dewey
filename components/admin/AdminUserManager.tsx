@@ -25,6 +25,8 @@ export function AdminUserManager() {
   const [saving, setSaving] = useState(false);
   const [ragCollectionOptions, setRagCollectionOptions] = useState<string[]>([]);
   const [ragCollectionsLoading, setRagCollectionsLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -348,21 +350,82 @@ export function AdminUserManager() {
                 </select>
               </div>
             </div>
-            <div className="flex gap-2 mt-6 justify-end">
+            <div className="flex gap-2 mt-6 justify-between">
+              <button
+                type="button"
+                className="px-4 py-2 border border-red-200 text-red-700 rounded hover:bg-red-50"
+                onClick={() => setDeleteConfirmOpen(true)}
+                disabled={deleting}
+              >
+                Delete account
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100"
+                  onClick={closeEdit}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="dewey-btn-primary w-auto"
+                  onClick={saveEdit}
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && editingUserId != null && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+          onClick={() => !deleting && setDeleteConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-2">Delete this account?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will remove the user from users and delete all their settings. This cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100"
-                onClick={closeEdit}
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="dewey-btn-primary w-auto"
-                onClick={saveEdit}
-                disabled={saving}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    const res = await fetch(`/api/admin/users/${editingUserId}`, { method: "DELETE" });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      throw new Error(data.error || "Failed to delete");
+                    }
+                    setDeleteConfirmOpen(false);
+                    closeEdit();
+                    await loadUsers();
+                  } catch (e) {
+                    alert(e instanceof Error ? e.message : "Failed to delete account");
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
               >
-                {saving ? "Saving…" : "Save"}
+                {deleting ? "Deleting…" : "Delete account"}
               </button>
             </div>
           </div>

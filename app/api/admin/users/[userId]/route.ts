@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getUserById } from "@/lib/db";
-import { getSettings, setSettings } from "@/lib/settings";
+import { deleteUser as deleteUserById, getUserById } from "@/lib/db";
+import { deleteSettings, getSettings, setSettings } from "@/lib/settings";
 import type { ChatSettings } from "@/lib/settings";
 
 export async function GET(
@@ -83,6 +83,40 @@ export async function PATCH(
     return NextResponse.json(updated);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to update user";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const isAdmin = (session.user as { is_system_admin?: boolean }).is_system_admin === true;
+  if (!isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const { userId } = await params;
+  const id = parseInt(userId, 10);
+  if (!Number.isFinite(id)) {
+    return NextResponse.json({ error: "Invalid user id" }, { status: 400 });
+  }
+  const user = await getUserById(id);
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+  try {
+    await deleteSettings(userId);
+    const deleted = await deleteUserById(id);
+    if (!deleted) {
+      return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed to delete account";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
