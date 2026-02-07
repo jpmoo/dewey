@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
+import { getRuntimeEnvSync } from "@/lib/env-admin";
 
 export interface ChatSettings {
   ollamaUrl?: string;
@@ -51,28 +52,28 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
   return all[userId] ?? {};
 }
 
-/** Default settings from env (DEWEY_DEFAULT_*). Applied to new accounts. */
+/** Default settings from env (DEWEY_DEFAULT_*). Uses runtime config when set in admin so changes take effect immediately. */
 export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
   const out: Partial<ChatSettings> = {};
-  const ollama = process.env.DEWEY_DEFAULT_OLLAMA_URL?.trim();
+  const ollama = getRuntimeEnvSync("DEWEY_DEFAULT_OLLAMA_URL")?.trim();
   if (ollama) out.ollamaUrl = ollama;
-  const rag = process.env.DEWEY_DEFAULT_RAG_SERVER_URL?.trim();
+  const rag = getRuntimeEnvSync("DEWEY_DEFAULT_RAG_SERVER_URL")?.trim();
   if (rag) out.ragServerUrl = rag;
-  const thresh = process.env.DEWEY_DEFAULT_RAG_THRESHOLD;
+  const thresh = getRuntimeEnvSync("DEWEY_DEFAULT_RAG_THRESHOLD");
   if (thresh !== undefined && thresh !== "") {
     const n = parseFloat(thresh);
     if (Number.isFinite(n)) out.ragThreshold = n;
   }
-  const collections = process.env.DEWEY_DEFAULT_RAG_COLLECTIONS?.trim();
+  const collections = getRuntimeEnvSync("DEWEY_DEFAULT_RAG_COLLECTIONS")?.trim();
   if (collections) {
     const arr = collections.split(",").map((s) => s.trim()).filter(Boolean);
     if (arr.length) out.ragCollections = arr;
   }
-  const systemMsg = process.env.DEWEY_DEFAULT_SYSTEM_MESSAGE;
+  const systemMsg = getRuntimeEnvSync("DEWEY_DEFAULT_SYSTEM_MESSAGE");
   if (systemMsg != null && systemMsg !== "") {
     out.systemMessage = systemMsg.replace(/\\n/g, "\n");
   }
-  const defaultModel = process.env.DEWEY_DEFAULT_MODEL?.trim();
+  const defaultModel = getRuntimeEnvSync("DEWEY_DEFAULT_MODEL")?.trim();
   if (defaultModel) out.model = defaultModel;
   return out;
 }

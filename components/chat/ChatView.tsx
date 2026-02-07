@@ -173,6 +173,10 @@ export function ChatView() {
   const introModalShownThisSessionRef = useRef(false);
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
+  const debugConsoleRef = useRef(false);
+  const debugLog = useCallback((...args: unknown[]) => {
+    if (debugConsoleRef.current) console.log(...args);
+  }, []);
 
   /** Dedupe citations by source (name+url), keep max similarity, sort by top similarity desc */
   const displayCitations = useMemo(() => {
@@ -424,6 +428,15 @@ export function ChatView() {
     setTheme(next);
   }, [theme]);
 
+  useEffect(() => {
+    fetch("/api/chat/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { debugConsole?: boolean } | null) => {
+        debugConsoleRef.current = !!data?.debugConsole;
+      })
+      .catch(() => { debugConsoleRef.current = false; });
+  }, []);
+
   /** When we have a selected model, fetch its context length from Ollama and log it. */
   useEffect(() => {
     const model = selectedModel.trim();
@@ -445,9 +458,9 @@ export function ChatView() {
         const resolved = ctx ?? getFallbackContextLength(model);
         setModelContextLength(resolved);
         if (ctx != null) {
-          console.log("[Dewey] Model context window:", ctx, "tokens", `(model: ${model})`);
+          debugLog("[Dewey] Model context window:", ctx, "tokens", `(model: ${model})`);
         } else {
-          console.log("[Dewey] Model context window:", resolved, "tokens (fallback from model name)", `(model: ${model})`);
+          debugLog("[Dewey] Model context window:", resolved, "tokens (fallback from model name)", `(model: ${model})`);
         }
       })
       .catch(() => {
@@ -619,7 +632,7 @@ export function ChatView() {
     const availableTokens = contextWindow - RESERVED_TOKENS;
     const estimatedTokens = estimateTokens(fullPrompt);
     if (estimatedTokens > availableTokens && chatHistory.length > 0) {
-      console.log("[Dewey] Token limit approached:", estimatedTokens, ">", availableTokens, "available; summarizing history.");
+      debugLog("[Dewey] Token limit approached:", estimatedTokens, ">", availableTokens, "available; summarizing history.");
       setSummarizingStatus("summarizing");
       const historyForSummary = chatHistory;
       const historyText = historyForSummary.map((m) => `${m.role}: ${m.content}`).join("\n\n");
@@ -654,7 +667,7 @@ export function ChatView() {
             fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
           });
           fullPrompt += `User: ${text}\n\nAssistant:`;
-          console.log("[Dewey] Prompt rebuilt after summarization; estimated tokens:", estimateTokens(fullPrompt));
+          debugLog("[Dewey] Prompt rebuilt after summarization; estimated tokens:", estimateTokens(fullPrompt));
         } else {
           if (chatHistory.length > 10) {
             const kept = chatHistory.slice(-5);
@@ -689,7 +702,7 @@ export function ChatView() {
       }
     }
 
-    console.log("[Dewey] Full prompt sent to model:", fullPrompt);
+    debugLog("[Dewey] Full prompt sent to model:", fullPrompt);
 
     try {
       const res = await fetch("/api/chat/ollama/generate", {
