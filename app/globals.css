@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #faf9f6;
+  --foreground: #1a1a1a;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  padding: 0.125em 0.375em;
+  border-radius: 0.25rem;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Primary action button: matches chat "Start a new conversation" (solid dark, light text) */
+@layer components {
+  .dewey-btn-primary {
+    @apply w-full py-2.5 px-4 text-sm font-medium rounded-md border-none cursor-pointer;
+    @apply bg-dewey-ink text-white;
+    @apply hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-dewey-accent/20 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

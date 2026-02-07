@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build
+.next
+out
+build
+dist
+
+# Data (local user store)
+data/
+
+# Env (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Debug / IDE
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo

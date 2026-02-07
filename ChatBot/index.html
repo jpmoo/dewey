@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatBot</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <div class="content-wrapper">
+      <!-- Left Panel -->
+      <aside class="left-panel" id="leftPanel">
+        <div class="panel-header">
+          <img src="assets/bot-svgrepo-com.svg" alt="Bot" class="bot-icon" />
+          <h1 class="panel-title">ChatBot</h1>
+        </div>
+        
+        <div class="panel-content">
+          <div class="settings-section">
+            <h2 class="settings-title">Ollama Settings</h2>
+            <div class="form-group">
+              <label for="ollamaUrl" class="form-label">Ollama URL</label>
+              <input 
+                type="text" 
+                id="ollamaUrl" 
+                class="form-input" 
+                placeholder="http://localhost:11434"
+              />
+            </div>
+            <button id="connectButton" class="connect-button" data-tooltip="Connect to Ollama" aria-label="Connect to Ollama">Connect</button>
+            <div class="form-group" id="modelGroup" style="display: none;">
+              <label for="modelSelect" class="form-label">Model</label>
+              <select id="modelSelect" class="form-select">
+                <option value="">Select a model...</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="settings-section" id="ragSettingsSection" style="display: none;">
+            <h2 class="settings-title">RAG Settings</h2>
+            <div class="form-group">
+              <label for="ragServerUrl" class="form-label">RAG Server URL</label>
+              <input 
+                type="text" 
+                id="ragServerUrl" 
+                class="form-input" 
+                placeholder="http://localhost:9042"
+              />
+            </div>
+            <div class="form-group">
+              <label for="ragThreshold" class="form-label">Minimum threshold</label>
+              <input 
+                type="number" 
+                id="ragThreshold" 
+                class="form-input" 
+                min="0" 
+                max="1" 
+                step="0.05" 
+                placeholder="0.6"
+                title="Similarity threshold (0–1). Higher = fewer, stricter matches. Default 0.6."
+              />
+            </div>
+            <div class="form-group" id="ragGroup" style="display: none;">
+              <label for="ragSelect" class="form-label">RAG Collections</label>
+              <select id="ragSelect" class="form-select form-select-multi" multiple title="Hold Ctrl (Windows/Linux) or Cmd (Mac) to select multiple">
+                <!-- Options populated by script -->
+              </select>
+            </div>
+          </div>
+          
+          <div class="settings-section" id="promptSettingsSection" style="display: none;">
+            <h2 class="settings-title">Prompt Settings</h2>
+            <button id="systemMessageButton" class="system-message-button" style="display: none;" data-tooltip="Edit system message" aria-label="Edit system message">System Message</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content" id="mainContent">
+        <div class="chat-font-controls" aria-label="Chat text size">
+          <button type="button" class="chat-font-btn" id="chatFontSmaller" data-tooltip="Decrease text size" aria-label="Decrease text size">−</button>
+          <button type="button" class="chat-font-btn" id="chatFontLarger" data-tooltip="Increase text size" aria-label="Increase text size">+</button>
+        </div>
+        <div class="status-circle" id="statusCircle" data-tooltip="Ollama connection status" aria-label="Ollama connection status">
+          <img src="assets/circle-svgrepo-com.svg" alt="Status" />
+        </div>
+        <div class="chat-container" id="chatContainer">
+          <!-- Chat messages will be added here -->
+        </div>
+      </main>
+    </div>
+
+    <!-- Side Buttons -->
+    <button class="panel-toggle side-button side-button-left" id="panelToggle" aria-label="Toggle panel" data-tooltip="Toggle panel">
+      <img src="assets/open-panel-filled-left-svgrepo-com.svg" alt="Toggle panel" />
+    </button>
+    <button class="cited-docs-button side-button side-button-citations" id="citedDocsButton" aria-label="Relevant Resources" data-tooltip="Relevant Resources" style="display: none;">
+      <img src="assets/document-svgrepo-com.svg" alt="Documents" />
+    </button>
+    <button class="theme-toggle side-button side-button-right" id="themeToggle" aria-label="Cycle theme" data-tooltip="Cycle theme">
+      <img src="assets/contrast-svgrepo-com.svg" alt="Toggle theme" />
+    </button>
+
+    <!-- Bottom Input Bar -->
+    <div class="bottom-bar" id="bottomBar">
+      <div class="chat-input-container">
+        <textarea 
+          id="chatInput" 
+          class="chat-input" 
+          placeholder="Type your message..."
+          rows="2"
+        ></textarea>
+        <button id="sendButton" class="send-button" title="Send message" disabled>
+          <img src="assets/send-alt-1-svgrepo-com.svg" alt="Send" />
+        </button>
+      </div>
+    </div>
+
+    <!-- System Message Dialog -->
+    <div id="systemMessageDialog" class="dialog-overlay" style="display: none;">
+      <div class="dialog-content">
+        <h3 class="dialog-title">System Message</h3>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="systemMessageHistory" class="form-label">Load Previous Message</label>
+          <select id="systemMessageHistory" class="form-select">
+            <option value="">-- Select a previous message --</option>
+          </select>
+        </div>
+        <textarea 
+          id="systemMessageTextarea" 
+          class="dialog-textarea" 
+          placeholder="Enter system message prompt..."
+          rows="8"
+        ></textarea>
+        <div class="dialog-buttons">
+          <div style="flex: 1;">
+            <button id="systemMessageDelete" class="dialog-button dialog-button-delete" style="display: none;">Delete</button>
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button id="systemMessageCancel" class="dialog-button dialog-button-cancel">Cancel</button>
+            <button id="systemMessageSave" class="dialog-button dialog-button-save">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Relevant Resources Dialog -->
+    <div id="citedDocsDialog" class="dialog-overlay" style="display: none;">
+      <div class="dialog-content cited-docs-dialog-content">
+        <h3 class="dialog-title">Resources relevant to this conversation</h3>
+        <ul id="citedDocsList" class="cited-docs-list"></ul>
+        <p id="citedDocsEmpty" class="cited-docs-empty" style="display: none;">No relevant resources yet.</p>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Dialog -->
+    <div id="deleteSystemMessageDialog" class="dialog-overlay" style="display: none;">
+      <div class="dialog-content">
+        <h3 class="dialog-title">Delete System Message</h3>
+        <div class="dialog-message">Are you sure you want to delete this system message? This will empty the text box and remove it from your history.</div>
+        <div class="dialog-buttons">
+          <button id="deleteSystemMessageCancel" class="dialog-button dialog-button-cancel">Cancel</button>
+          <button id="deleteSystemMessageConfirm" class="dialog-button dialog-button-delete">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Model Connection Dialog -->
+    <div id="modelConnectionDialog" class="dialog-overlay" style="display: none;">
+      <div class="dialog-content">
+        <h3 class="dialog-title">Connecting to Model</h3>
+        <div id="modelConnectionMessage" class="dialog-message">Checking model responsiveness...</div>
+        <div class="dialog-buttons" id="modelConnectionButtons" style="display: none;">
+          <button id="modelConnectionOK" class="dialog-button dialog-button-cancel">OK</button>
+          <button id="modelConnectionRetry" class="dialog-button dialog-button-save">Retry</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
