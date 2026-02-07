@@ -399,6 +399,21 @@
   0%, 60%, 100% { transform: translateY(0); opacity: 0.7; }
   30% { transform: translateY(-10px); opacity: 1; }
 }
+.dewey-chat .chat-bubble.summarizing-bubble {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  font-size: 0.9em;
+}
+.dewey-chat .chat-bubble.summarizing-bubble .summarizing-text {
+  color: var(--text-secondary);
+}
+.dewey-chat .chat-bubble.summarizing-done .summarizing-text {
+  color: var(--text-primary);
+}
+.dewey-chat .chat-bubble.summarizing-error .summarizing-text {
+  color: var(--text-secondary);
+  font-style: italic;
+}
 .dewey-chat .chat-footer {
   min-height: 60px;
   background: var(--bg-primary);

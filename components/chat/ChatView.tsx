@@ -51,6 +51,72 @@ function resolveCitationUrl(base: string, url: string): string {
   return `${b}${path}`;
 }
 
+/**
+ * Parse context length from Ollama /api/show response.
+ * Order matches ChatBot/renderer.js getModelContextWindow: top-level, model_info (with known keys then any .context_length), parameters num_ctx, modelfile PARAMETER.
+ */
+function parseContextLengthFromShow(data: unknown): number | null {
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+
+  // 1) Top-level context_length
+  let ctx = d.context_length;
+  if (typeof ctx === "number" && Number.isFinite(ctx) && ctx > 0) return ctx;
+
+  // 2) model_info: known keys then any key ending in .context_length or "context_length"
+  const info = d.model_info;
+  if (info && typeof info === "object") {
+    const obj = info as Record<string, unknown>;
+    ctx = obj["llama.context_length"] ?? obj["gemma3.context_length"] ?? obj["context_length"];
+    if (typeof ctx === "number" && Number.isFinite(ctx) && ctx > 0) return ctx;
+    const contextKey = Object.keys(obj).find(
+      (k) => k === "context_length" || k.endsWith(".context_length")
+    );
+    if (contextKey) {
+      const v = obj[contextKey];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+    }
+  }
+
+  // 3) parameters string e.g. "num_ctx 32768\n..."
+  const params = d.parameters;
+  if (typeof params === "string") {
+    const m = params.match(/num_ctx\s+(\d+)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+
+  // 4) modelfile e.g. "PARAMETER context_length 32768"
+  const modelfile = d.modelfile;
+  if (typeof modelfile === "string") {
+    const m = modelfile.match(/PARAMETER\s+context_length\s+(\d+)/i);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+
+  return null;
+}
+
+/** Fallback context length by model name when /api/show does not report it (matches ChatBot/renderer.js). */
+function getFallbackContextLength(modelName: string): number {
+  const name = modelName.toLowerCase();
+  if (name.includes("llama3") || name.includes("qwen")) return 8192;
+  if (name.includes("llama2") || name.includes("mistral")) return 4096;
+  return 4096;
+}
+
+/** Rough token estimate (~4 chars per token for English). Matches ChatBot/renderer.js. */
+function estimateTokens(text: string): number {
+  if (!text || typeof text !== "string") return 0;
+  return Math.ceil(text.length / 4);
+}
+
+const RESERVED_TOKENS = 500;
+
 /** Document/citation base URL: user's app URL (no port) with the port from the RAG server URL, so links work behind proxies. */
 function getDocumentBaseUrl(ragServerUrl: string): string {
   if (typeof window === "undefined" || !ragServerUrl.trim()) return ragServerUrl.trim();
@@ -68,6 +134,7 @@ export function ChatView() {
   const [ollamaUrl, setOllamaUrl] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [modelContextLength, setModelContextLength] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [ragUrl, setRagUrl] = useState("");
   const [ragThreshold, setRagThreshold] = useState(RAG_THRESHOLD_DEFAULT);
@@ -96,6 +163,7 @@ export function ChatView() {
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introDraft, setIntroDraft] = useState("");
   const [showIntroValidation, setShowIntroValidation] = useState(false);
+  const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
   const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
   const [systemMessageDraft, setSystemMessageDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -353,6 +421,38 @@ export function ChatView() {
     setTheme(next);
   }, [theme]);
 
+  /** When we have a selected model, fetch its context length from Ollama and log it. */
+  useEffect(() => {
+    const model = selectedModel.trim();
+    const url = ollamaUrl.trim();
+    if (!model || !url) {
+      setModelContextLength(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/chat/ollama/show", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ollamaUrl: url, name: model }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const ctx = data ? parseContextLengthFromShow(data) : null;
+        const resolved = ctx ?? getFallbackContextLength(model);
+        setModelContextLength(resolved);
+        if (ctx != null) {
+          console.log("[Dewey] Model context window:", ctx, "tokens", `(model: ${model})`);
+        } else {
+          console.log("[Dewey] Model context window:", resolved, "tokens (fallback from model name)", `(model: ${model})`);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setModelContextLength(null);
+      });
+    return () => { cancelled = true; };
+  }, [selectedModel, ollamaUrl]);
+
   /** Run connection check using current ollamaUrl (saved settings); used on load and on Retry */
   const checkConnectionFromSettings = useCallback(async () => {
     const url = ollamaUrl.trim();
@@ -462,12 +562,17 @@ export function ChatView() {
     const selectedRag = ragCollections.length > 0 && ragUrl.trim();
     if (selectedRag) {
       try {
+        // Include last exchange so RAG retrieval stays conversation-aware when topic shifts
+        const lastAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content ?? "";
+        const ragPrompt = lastAssistant.trim()
+          ? `${lastAssistant.trim()}\n\nUser: ${text}`
+          : text;
         const res = await fetch("/api/chat/rag/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ragUrl: ragUrl.trim(),
-            prompt: text,
+            prompt: ragPrompt,
             group: ragCollections,
             threshold: ragThreshold,
             limit_chunk_role: true,
@@ -482,11 +587,15 @@ export function ChatView() {
             url: r.source_url || r.sourceUrl || "#",
             similarity: r.similarity,
           }));
-          setCitations((prev) => [...prev, ...newCitations]);
+          setCitations(newCitations);
+        } else {
+          setCitations([]);
         }
       } catch {
-        // ignore RAG errors
+        setCitations([]);
       }
+    } else {
+      setCitations([]);
     }
 
     let fullPrompt = "";
@@ -502,6 +611,80 @@ export function ChatView() {
       fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
     });
     fullPrompt += `User: ${text}\n\nAssistant:`;
+
+    const contextWindow = modelContextLength ?? getFallbackContextLength(selectedModel);
+    const availableTokens = contextWindow - RESERVED_TOKENS;
+    const estimatedTokens = estimateTokens(fullPrompt);
+    if (estimatedTokens > availableTokens && chatHistory.length > 0) {
+      console.log("[Dewey] Token limit approached:", estimatedTokens, ">", availableTokens, "available; summarizing history.");
+      setSummarizingStatus("summarizing");
+      const historyForSummary = chatHistory;
+      const historyText = historyForSummary.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+      const summaryPrompt = `Please provide a concise summary of the following conversation history:\n\n${historyText}\n\nSummary:`;
+      try {
+        const sumRes = await fetch("/api/chat/ollama/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ollamaUrl: ollamaUrl.trim(),
+            model: selectedModel,
+            prompt: summaryPrompt,
+            stream: false,
+          }),
+        });
+        const sumData = await sumRes.json().catch(() => ({}));
+        const summary = sumRes.ok && typeof sumData.response === "string" ? sumData.response.trim() : "";
+        if (summary) {
+          const summaryMsg: { role: "user" | "assistant"; content: string } = {
+            role: "assistant",
+            content: `[Previous conversation summarized: ${summary}]`,
+          };
+          const newHistory = [summaryMsg, userMsg];
+          setChatHistory(newHistory);
+          setSummarizingStatus("done");
+          setTimeout(() => setSummarizingStatus(null), 3000);
+          fullPrompt = "";
+          if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
+          if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
+          if (ragContext) fullPrompt += ragContext;
+          newHistory.forEach((m) => {
+            fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
+          });
+          fullPrompt += `User: ${text}\n\nAssistant:`;
+          console.log("[Dewey] Prompt rebuilt after summarization; estimated tokens:", estimateTokens(fullPrompt));
+        } else {
+          if (chatHistory.length > 10) {
+            const kept = chatHistory.slice(-5);
+            setChatHistory([...kept, userMsg]);
+            fullPrompt = "";
+            if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
+            if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
+            if (ragContext) fullPrompt += ragContext;
+            [...kept, userMsg].forEach((m) => {
+              fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
+            });
+            fullPrompt += `User: ${text}\n\nAssistant:`;
+          }
+          setSummarizingStatus("error");
+          setTimeout(() => setSummarizingStatus(null), 3000);
+        }
+      } catch {
+        if (chatHistory.length > 10) {
+          const kept = chatHistory.slice(-5);
+          setChatHistory([...kept, userMsg]);
+          fullPrompt = "";
+          if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
+          if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
+          if (ragContext) fullPrompt += ragContext;
+          [...kept, userMsg].forEach((m) => {
+            fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
+          });
+          fullPrompt += `User: ${text}\n\nAssistant:`;
+        }
+        setSummarizingStatus("error");
+        setTimeout(() => setSummarizingStatus(null), 3000);
+      }
+    }
 
     console.log("[Dewey] Full prompt sent to model:", fullPrompt);
 
@@ -556,7 +739,7 @@ export function ChatView() {
     } finally {
       setLoading(false);
     }
-  }, [inputValue, loading, selectedModel, ollamaUrl, ragUrl, ragCollections, ragThreshold, systemMessage, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory]);
+  }, [inputValue, loading, selectedModel, ollamaUrl, ragUrl, ragCollections, ragThreshold, systemMessage, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, modelContextLength]);
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
@@ -773,6 +956,27 @@ export function ChatView() {
                 </div>
               </div>
             ))}
+            {summarizingStatus === "summarizing" && (
+              <div className="chat-message assistant">
+                <div className="chat-bubble summarizing-bubble">
+                  <span className="summarizing-text">Summarizing conversation history...</span>
+                </div>
+              </div>
+            )}
+            {summarizingStatus === "done" && (
+              <div className="chat-message assistant">
+                <div className="chat-bubble summarizing-bubble summarizing-done">
+                  <span className="summarizing-text">Conversation history summarized</span>
+                </div>
+              </div>
+            )}
+            {summarizingStatus === "error" && (
+              <div className="chat-message assistant">
+                <div className="chat-bubble summarizing-bubble summarizing-error">
+                  <span className="summarizing-text">Failed to summarize history; using recent messages</span>
+                </div>
+              </div>
+            )}
             {showTypingIndicator && (
               <div className="chat-message assistant">
                 <div className="typing-indicator">
