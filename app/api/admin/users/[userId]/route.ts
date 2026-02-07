@@ -66,7 +66,7 @@ export async function PATCH(
   const partial: Partial<ChatSettings> = {};
   const allowed: (keyof ChatSettings)[] = [
     "ollamaUrl", "ragServerUrl", "ragThreshold", "ragCollections",
-    "systemMessage", "systemMessageHistory", "theme", "panelState", "chatFontSize",
+    "systemMessage", "systemMessageHistory", "theme", "chatFontSize",
     "userPreferredName", "userSchoolOrOffice", "userRole", "userContext",
     "is_system_admin",
   ];

@@ -476,9 +476,15 @@
   justify-content: center;
   z-index: 2000;
 }
-/* Intro modal: overlay only the main area so the left panel stays visible and editable */
-.dewey-chat .chat-dialog-overlay.chat-dialog-overlay-intro {
-  left: 280px;
+/* Intro modal: scrollable content when panel section is present */
+.dewey-chat .chat-dialog.chat-dialog-intro {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.dewey-chat .chat-dialog-intro-panel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
 }
 .dewey-chat .chat-dialog {
   background: var(--bg-primary);

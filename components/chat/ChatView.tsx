@@ -53,7 +53,7 @@ export function ChatView() {
   const [systemMessage, setSystemMessage] = useState("");
   const [systemHistory, setSystemHistory] = useState<string[]>([]);
   const [theme, setTheme] = useState("light");
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(true);
   const [chatFontSize, setChatFontSize] = useState(CHAT_FONT_DEFAULT);
   const [userPreferredName, setUserPreferredName] = useState("");
   const [userSchoolOrOffice, setUserSchoolOrOffice] = useState("");
@@ -123,7 +123,6 @@ export function ChatView() {
     }
     const t = load("theme", "light") as string;
     setTheme(THEME_ORDER.includes(t) ? t : "light");
-    setPanelCollapsed((load("panelState", "open") as string) === "collapsed");
     const fs = parseInt((load("chatFontSize", String(CHAT_FONT_DEFAULT)) as string), 10);
     setChatFontSize(Number.isFinite(fs) && fs >= CHAT_FONT_MIN && fs <= CHAT_FONT_MAX ? fs : CHAT_FONT_DEFAULT);
     setUserPreferredName((load("userPreferredName", "") as string));
@@ -152,7 +151,6 @@ export function ChatView() {
         if (typeof data.systemMessage === "string") setSystemMessage(data.systemMessage);
         if (Array.isArray(data.systemMessageHistory)) setSystemHistory(data.systemMessageHistory);
         if (typeof data.theme === "string" && THEME_ORDER.includes(data.theme)) setTheme(data.theme);
-        if (data.panelState === "collapsed") setPanelCollapsed(true);
         if (typeof data.chatFontSize === "number" && data.chatFontSize >= CHAT_FONT_MIN && data.chatFontSize <= CHAT_FONT_MAX) setChatFontSize(data.chatFontSize);
         if (typeof data.userPreferredName === "string") setUserPreferredName(data.userPreferredName);
         if (typeof data.userSchoolOrOffice === "string") setUserSchoolOrOffice(data.userSchoolOrOffice);
@@ -210,7 +208,7 @@ export function ChatView() {
     setInputValue("");
     previousCitedOrderRef.current = [];
     lastShownOrderRef.current = [];
-    setPanelCollapsed(false);
+    setPanelCollapsed(true);
     setShowIntroModal(true);
     setIntroDraft("");
   }, [sessionStatus, session?.user?.id]);
@@ -224,7 +222,6 @@ export function ChatView() {
       systemMessage?: string;
       systemMessageHistory?: string[];
       theme?: string;
-      panelState?: string;
       chatFontSize?: number;
       userPreferredName?: string;
       userSchoolOrOffice?: string;
@@ -265,7 +262,6 @@ export function ChatView() {
         systemMessage,
         systemMessageHistory: systemHistory,
         theme,
-        panelState: panelCollapsed ? "collapsed" : "open",
         chatFontSize,
         userPreferredName,
         userSchoolOrOffice,
@@ -276,7 +272,7 @@ export function ChatView() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, panelCollapsed, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
+  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") {
@@ -287,14 +283,13 @@ export function ChatView() {
       saveToStorage("systemMessage", systemMessage);
       saveToStorage("systemMessageHistory", JSON.stringify(systemHistory));
       saveToStorage("theme", theme);
-      saveToStorage("panelState", panelCollapsed ? "collapsed" : "open");
       saveToStorage("chatFontSize", String(chatFontSize));
       saveToStorage("userPreferredName", userPreferredName);
       saveToStorage("userSchoolOrOffice", userSchoolOrOffice);
       saveToStorage("userRole", userRole);
       saveToStorage("userContext", userContext);
     }
-  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, panelCollapsed, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveToStorage]);
+  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveToStorage]);
 
   const fetchRagCollections = useCallback(async () => {
     const url = ragUrl.trim();
@@ -540,13 +535,19 @@ export function ChatView() {
     }
   }, [inputValue, loading, selectedModel, ollamaUrl, ragUrl, ragCollections, ragThreshold, systemMessage, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory]);
 
-  const submitIntro = useCallback(() => {
+  const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
     if (!text) return;
+    await saveSettings({
+      userPreferredName,
+      userSchoolOrOffice,
+      userRole,
+      userContext,
+    });
     setShowIntroModal(false);
     setIntroDraft("");
     sendMessage(text);
-  }, [introDraft, sendMessage]);
+  }, [introDraft, sendMessage, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext]);
 
   const saveSystemMessage = useCallback(() => {
     const msg = systemMessageDraft.trim();
@@ -622,7 +623,7 @@ export function ChatView() {
   return (
     <div className="dewey-chat" data-theme={theme} style={{ ["--chat-font-size" as string]: `${chatFontSize}px` }}>
       <div className="chat-content-wrapper">
-        <aside className={`chat-left-panel ${panelCollapsed && !showIntroModal ? "collapsed" : ""}`}>
+        <aside className={`chat-left-panel ${panelCollapsed ? "collapsed" : ""}`}>
           <div className="chat-panel-header chat-panel-header-with-user">
             <div className="chat-panel-header-top">
               <Image
@@ -776,7 +777,7 @@ export function ChatView() {
               }
             }}
           />
-          <button type="button" className="chat-footer-btn chat-send-btn" disabled={sendDisabled} onClick={sendMessage} title="Send">
+          <button type="button" className="chat-footer-btn chat-send-btn" disabled={sendDisabled} onClick={() => sendMessage()} title="Send">
             <img src="/chat-assets/send-alt-1-svgrepo-com.svg" alt="Send" />
           </button>
         </div>
@@ -798,8 +799,8 @@ export function ChatView() {
       </footer>
 
       {showIntroModal && (
-        <div className="chat-dialog-overlay chat-dialog-overlay-intro">
-          <div className="chat-dialog" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="chat-dialog-overlay">
+          <div className="chat-dialog chat-dialog-intro" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">
               Welcome{userPreferredName.trim() ? `, ${userPreferredName.trim()}` : session?.user?.name || session?.user?.email ? `, ${session?.user?.name || session?.user?.email}` : ""}!
             </h3>
@@ -809,15 +810,58 @@ export function ChatView() {
             <textarea
               className="chat-dialog-textarea"
               placeholder="e.g. I'm working on improving our district's approach to teacher evaluation. I'd like to explore how we can make observations more growth-oriented while still meeting state requirements..."
-              rows={6}
+              rows={5}
               value={introDraft}
               onChange={(e) => setIntroDraft(e.target.value)}
             />
+            <div className="chat-dialog-intro-panel">
+              <p className="chat-form-label" style={{ marginBottom: 8 }}>About you (optional)</p>
+              <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                <label className="chat-form-label">Preferred name</label>
+                <input
+                  type="text"
+                  className="chat-form-input"
+                  placeholder="e.g. Jamie"
+                  value={userPreferredName}
+                  onChange={(e) => setUserPreferredName(e.target.value)}
+                />
+              </div>
+              <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                <label className="chat-form-label">School or office</label>
+                <input
+                  type="text"
+                  className="chat-form-input"
+                  placeholder="e.g. Mamaroneck Union Free School District"
+                  value={userSchoolOrOffice}
+                  onChange={(e) => setUserSchoolOrOffice(e.target.value)}
+                />
+              </div>
+              <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                <label className="chat-form-label">Role</label>
+                <input
+                  type="text"
+                  className="chat-form-input"
+                  placeholder="e.g. Assistant Superintendent"
+                  value={userRole}
+                  onChange={(e) => setUserRole(e.target.value)}
+                />
+              </div>
+              <div className="chat-form-group" style={{ marginBottom: 12 }}>
+                <label className="chat-form-label">Context about your school or office</label>
+                <textarea
+                  className="chat-form-input"
+                  placeholder="e.g. K–12 district, three elementary, one middle, one high..."
+                  rows={3}
+                  value={userContext}
+                  onChange={(e) => setUserContext(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="chat-dialog-buttons">
               <button
                 type="button"
                 className="chat-dialog-btn chat-dialog-btn-save"
-                onClick={submitIntro}
+                onClick={() => submitIntro()}
                 disabled={!introDraft.trim() || loading}
               >
                 Start conversation
@@ -924,7 +968,6 @@ export function ChatView() {
                   setInputValue("");
                   previousCitedOrderRef.current = [];
                   lastShownOrderRef.current = [];
-                  setPanelCollapsed(false);
                   setShowIntroModal(true);
                   setIntroDraft("");
                 }}
