@@ -35,6 +35,8 @@ export function AdminUserManager() {
   const [saving, setSaving] = useState(false);
   const [ragCollectionOptions, setRagCollectionOptions] = useState<string[]>([]);
   const [ragCollectionsLoading, setRagCollectionsLoading] = useState(false);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -68,6 +70,7 @@ export function AdminUserManager() {
       setEditData(data);
       setEditingUserId(userId);
       setRagCollectionOptions([]);
+      setModelOptions([]);
     } catch {
       setEditData(null);
       setEditingUserId(null);
@@ -75,6 +78,7 @@ export function AdminUserManager() {
   }, []);
 
   const ragServerUrl = editData?.settings?.ragServerUrl as string | undefined;
+  const ollamaUrl = editData?.settings?.ollamaUrl as string | undefined;
   useEffect(() => {
     const url = typeof ragServerUrl === "string" ? ragServerUrl.trim() : "";
     if (!url) {
@@ -101,6 +105,36 @@ export function AdminUserManager() {
       });
     return () => { cancelled = true; };
   }, [ragServerUrl]);
+
+  useEffect(() => {
+    const url = typeof ollamaUrl === "string" ? ollamaUrl.trim() : "";
+    if (!url) {
+      setModelOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setModelOptionsLoading(true);
+    fetch("/api/chat/ollama/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ollamaUrl: url }),
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: { models?: { name?: string }[] }) => {
+        if (cancelled) return;
+        const list = d.models && Array.isArray(d.models)
+          ? d.models.map((m) => m?.name ?? "").filter(Boolean)
+          : [];
+        setModelOptions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setModelOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setModelOptionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [ollamaUrl]);
 
   const closeEdit = useCallback(() => {
     setEditingUserId(null);
@@ -204,6 +238,25 @@ export function AdminUserManager() {
                   value={(editData.settings.ollamaUrl as string) ?? ""}
                   onChange={(e) => updateEdit({ ollamaUrl: e.target.value })}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Model
+                  {modelOptionsLoading && <span className="ml-2 text-gray-500 text-xs">(loading…)</span>}
+                </label>
+                <select
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  value={(editData.settings.model as string) ?? ""}
+                  onChange={(e) => updateEdit({ model: e.target.value })}
+                >
+                  <option value="">Select model (set Ollama URL first)</option>
+                  {(editData.settings.model as string) && !modelOptions.includes((editData.settings.model as string) ?? "") && (
+                    <option value={editData.settings.model as string}>{editData.settings.model as string} (not in list)</option>
+                  )}
+                  {modelOptions.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">RAG server URL</label>

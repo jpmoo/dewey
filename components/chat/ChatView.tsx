@@ -265,7 +265,8 @@ export function ChatView() {
                 ? body.models.map((m: { name?: string }) => (m && (m.name ?? m))).filter(Boolean) as string[]
                 : [];
               setModels(list);
-              setSelectedModel(list[0] ?? "");
+              const savedModel = typeof data.model === "string" ? data.model : "";
+              setSelectedModel(savedModel && list.includes(savedModel) ? savedModel : list[0] ?? "");
               setConnected(list.length > 0);
               setConnectionError("");
             })
@@ -310,6 +311,7 @@ export function ChatView() {
       ragServerUrl?: string;
       ragThreshold?: number;
       ragCollections?: string[];
+      model?: string;
       systemMessage?: string;
       systemMessageHistory?: string[];
       theme?: string;
@@ -350,6 +352,7 @@ export function ChatView() {
         ragServerUrl: ragUrl,
         ragThreshold,
         ragCollections,
+        model: selectedModel || undefined,
         systemMessage,
         systemMessageHistory: systemHistory,
         theme,
@@ -363,7 +366,7 @@ export function ChatView() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
+  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, selectedModel, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") {
@@ -478,7 +481,7 @@ export function ChatView() {
         ? body.models.map((m: { name?: string }) => (m && (m.name ?? m))).filter(Boolean) as string[]
         : [];
       setModels(list);
-      setSelectedModel(list[0] ?? "");
+      setSelectedModel((prev) => (prev && list.includes(prev) ? prev : list[0] ?? ""));
       setConnected(list.length > 0);
       setConnectionError("");
     } catch (err) {

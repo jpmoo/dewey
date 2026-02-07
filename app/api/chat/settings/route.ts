@@ -31,6 +31,7 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.ragServerUrl === "string") partial.ragServerUrl = body.ragServerUrl;
   if (typeof body.ragThreshold === "number") partial.ragThreshold = body.ragThreshold;
   if (Array.isArray(body.ragCollections)) partial.ragCollections = body.ragCollections;
+  if (typeof body.model === "string") partial.model = body.model;
   if (typeof body.systemMessage === "string") partial.systemMessage = body.systemMessage;
   if (Array.isArray(body.systemMessageHistory)) partial.systemMessageHistory = body.systemMessageHistory;
   if (typeof body.theme === "string") partial.theme = body.theme;

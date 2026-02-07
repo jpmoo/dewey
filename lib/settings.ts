@@ -6,6 +6,7 @@ export interface ChatSettings {
   ragServerUrl?: string;
   ragThreshold?: number;
   ragCollections?: string[];
+  model?: string;
   systemMessage?: string;
   systemMessageHistory?: string[];
   theme?: string;
@@ -71,6 +72,8 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
   if (systemMsg != null && systemMsg !== "") {
     out.systemMessage = systemMsg.replace(/\\n/g, "\n");
   }
+  const defaultModel = process.env.DEWEY_DEFAULT_MODEL?.trim();
+  if (defaultModel) out.model = defaultModel;
   return out;
 }
 
