@@ -31,14 +31,27 @@ function deriveRagUrl(ollamaUrl: string) {
   }
 }
 
-/** Resolve a citation URL against the RAG server base; if already absolute, return as-is. */
-function resolveCitationUrl(ragBase: string, url: string): string {
+/** Resolve a citation URL against a base; if already absolute, return as-is. */
+function resolveCitationUrl(base: string, url: string): string {
   const u = (url || "").trim();
   if (!u || u === "#") return "#";
   if (/^https?:\/\//i.test(u)) return u;
-  const base = ragBase.replace(/\/$/, "");
+  const b = base.replace(/\/$/, "");
   const path = u.startsWith("/") ? u : `/${u}`;
-  return base ? `${base}${path}` : u;
+  return b ? `${b}${path}` : u;
+}
+
+/** Document/citation base URL: user's app URL (no port) with the port from the RAG server URL, so links work behind proxies. */
+function getDocumentBaseUrl(ragServerUrl: string): string {
+  if (typeof window === "undefined" || !ragServerUrl.trim()) return ragServerUrl.trim();
+  try {
+    const u = new URL(ragServerUrl.trim());
+    const port = u.port || (u.protocol === "https:" ? "443" : "80");
+    const appBase = window.location.origin.replace(/:\d+$/, "");
+    return `${appBase}:${port}`;
+  } catch {
+    return ragServerUrl.trim();
+  }
 }
 
 export function ChatView() {
@@ -981,7 +994,7 @@ export function ChatView() {
                         {indicatorChar}
                       </span>
                       <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
-                      <a href={resolveCitationUrl(ragUrl.trim(), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
+                      <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
                         {entry.sourceName}
                       </a>
                     </li>
