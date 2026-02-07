@@ -114,7 +114,7 @@ function loadRuntimeConfigSync(): RuntimeConfig {
   } catch {
     runtimeConfigCache = {};
   }
-  return runtimeConfigCache;
+  return runtimeConfigCache ?? {};
 }
 
 /** Get env value: runtime overrides (from admin) first, then process.env. Use this for DEWEY_DEFAULT_* so admin changes take effect immediately. */
