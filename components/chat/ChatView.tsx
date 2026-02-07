@@ -72,6 +72,7 @@ export function ChatView() {
   const [dialogIntroSignOutConfirm, setDialogIntroSignOutConfirm] = useState(false);
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introDraft, setIntroDraft] = useState("");
+  const [showIntroValidation, setShowIntroValidation] = useState(false);
   const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
   const [systemMessageDraft, setSystemMessageDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -212,6 +213,7 @@ export function ChatView() {
     setPanelCollapsed(true);
     setShowIntroModal(true);
     setIntroDraft("");
+    setShowIntroValidation(false);
   }, [sessionStatus, session?.user?.id]);
 
   const saveSettings = useCallback(
@@ -538,7 +540,15 @@ export function ChatView() {
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
-    if (!text) return;
+    const hasName = userPreferredName.trim().length > 0;
+    const hasSchool = userSchoolOrOffice.trim().length > 0;
+    const hasRole = userRole.trim().length > 0;
+    const hasContext = userContext.trim().length > 0;
+    if (!text || !hasName || !hasSchool || !hasRole || !hasContext) {
+      setShowIntroValidation(true);
+      return;
+    }
+    setShowIntroValidation(false);
     await saveSettings({
       userPreferredName,
       userSchoolOrOffice,
@@ -808,12 +818,17 @@ export function ChatView() {
             <p className="chat-dialog-message" style={{ marginBottom: 12 }}>
               Please provide a detailed introduction to your question, problem, or conversation topic for this session. All fields below are required.
             </p>
+            {showIntroValidation && (
+              <p className="chat-dialog-message intro-validation-msg" style={{ marginBottom: 12, color: "var(--intro-validation-color, #b91c1c)" }}>
+                All fields are required. Please fill in each field before starting.
+              </p>
+            )}
             <textarea
-              className="chat-dialog-textarea"
+              className={`chat-dialog-textarea ${showIntroValidation && !introDraft.trim() ? "intro-field-error" : ""}`}
               placeholder="e.g. I'm working on improving our district's approach to teacher evaluation. I'd like to explore how we can make observations more growth-oriented while still meeting state requirements..."
               rows={5}
               value={introDraft}
-              onChange={(e) => setIntroDraft(e.target.value)}
+              onChange={(e) => { setIntroDraft(e.target.value); setShowIntroValidation(false); }}
             />
             <div className="chat-dialog-intro-panel">
               <p className="chat-form-label" style={{ marginBottom: 8 }}>About you</p>
@@ -821,40 +836,40 @@ export function ChatView() {
                 <label className="chat-form-label">Preferred name</label>
                 <input
                   type="text"
-                  className="chat-form-input"
+                  className={`chat-form-input ${showIntroValidation && !userPreferredName.trim() ? "intro-field-error" : ""}`}
                   placeholder="e.g. Jamie"
                   value={userPreferredName}
-                  onChange={(e) => setUserPreferredName(e.target.value)}
+                  onChange={(e) => { setUserPreferredName(e.target.value); setShowIntroValidation(false); }}
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 10 }}>
                 <label className="chat-form-label">School or office</label>
                 <input
                   type="text"
-                  className="chat-form-input"
+                  className={`chat-form-input ${showIntroValidation && !userSchoolOrOffice.trim() ? "intro-field-error" : ""}`}
                   placeholder="e.g. Mamaroneck Union Free School District"
                   value={userSchoolOrOffice}
-                  onChange={(e) => setUserSchoolOrOffice(e.target.value)}
+                  onChange={(e) => { setUserSchoolOrOffice(e.target.value); setShowIntroValidation(false); }}
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 10 }}>
                 <label className="chat-form-label">Role</label>
                 <input
                   type="text"
-                  className="chat-form-input"
+                  className={`chat-form-input ${showIntroValidation && !userRole.trim() ? "intro-field-error" : ""}`}
                   placeholder="e.g. Assistant Superintendent"
                   value={userRole}
-                  onChange={(e) => setUserRole(e.target.value)}
+                  onChange={(e) => { setUserRole(e.target.value); setShowIntroValidation(false); }}
                 />
               </div>
               <div className="chat-form-group" style={{ marginBottom: 12 }}>
                 <label className="chat-form-label">Context about your school or office</label>
                 <textarea
-                  className="chat-form-input"
+                  className={`chat-form-input ${showIntroValidation && !userContext.trim() ? "intro-field-error" : ""}`}
                   placeholder="e.g. K–12 district, three elementary, one middle, one high..."
                   rows={3}
                   value={userContext}
-                  onChange={(e) => setUserContext(e.target.value)}
+                  onChange={(e) => { setUserContext(e.target.value); setShowIntroValidation(false); }}
                 />
               </div>
             </div>
@@ -870,14 +885,7 @@ export function ChatView() {
                 type="button"
                 className="chat-dialog-btn chat-dialog-btn-save"
                 onClick={() => submitIntro()}
-                disabled={
-                  loading ||
-                  !introDraft.trim() ||
-                  !userPreferredName.trim() ||
-                  !userSchoolOrOffice.trim() ||
-                  !userRole.trim() ||
-                  !userContext.trim()
-                }
+                disabled={loading}
               >
                 Start conversation
               </button>
@@ -1007,6 +1015,7 @@ export function ChatView() {
                   lastShownOrderRef.current = [];
                   setShowIntroModal(true);
                   setIntroDraft("");
+                  setShowIntroValidation(false);
                 }}
               >
                 Start new conversation

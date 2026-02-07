@@ -486,6 +486,11 @@
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
 }
+.dewey-chat .intro-field-error,
+.dewey-chat .chat-dialog-textarea.intro-field-error {
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 1px #b91c1c;
+}
 .dewey-chat .chat-dialog {
   background: var(--bg-primary);
   border-radius: 8px;

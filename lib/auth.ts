@@ -4,7 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getUserByUsername } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
+import { getDefaultSettingsFromEnv, getSettings, setSettings } from "@/lib/settings";
 import { verifyPassword } from "@/lib/password";
 
 const providers: NextAuthOptions["providers"] = [];
@@ -84,6 +84,18 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name;
         token.email = user.email ?? null;
         token.is_system_admin = "is_system_admin" in user ? user.is_system_admin : false;
+        // Ensure OAuth users (Google, etc.) have a settings entry on first sign-in
+        if (user.id) {
+          try {
+            const existing = await getSettings(user.id);
+            const hasAny = Object.keys(existing).length > 0;
+            if (!hasAny) {
+              await setSettings(user.id, { ...getDefaultSettingsFromEnv(), is_system_admin: false });
+            }
+          } catch {
+            // ignore
+          }
+        }
       }
       return token;
     },

@@ -14,6 +14,7 @@ const SSO_LABELS: Record<string, string> = {
 export function AuthArea() {
   const [setupStatus, setSetupStatus] = useState<{ hasUsers: boolean } | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
+  const [deweyExpanded, setDeweyExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,9 +78,20 @@ export function AuthArea() {
           ))}
         </div>
       )}
-      <div className="rounded-xl border border-dewey-border bg-white/60 p-4">
-        <p className="text-sm font-medium text-dewey-ink mb-3">Log in with your Dewey account</p>
-        <DeweyLoginForm />
+      <div className="rounded-xl border border-dewey-border bg-white/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setDeweyExpanded((e) => !e)}
+          className="w-full flex items-center justify-between gap-2 p-4 text-left text-sm font-medium text-dewey-ink hover:bg-dewey-cream/50 transition-colors"
+        >
+          <span>Sign in with Dewey account</span>
+          <span className="text-dewey-mute transition-transform duration-200" style={{ transform: deweyExpanded ? "rotate(180deg)" : "rotate(0deg)" }} aria-hidden>▼</span>
+        </button>
+        {deweyExpanded && (
+          <div className="border-t border-dewey-border p-4">
+            <DeweyLoginForm />
+          </div>
+        )}
       </div>
     </div>
   );
