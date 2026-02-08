@@ -610,43 +610,39 @@ export function ChatView() {
         const rawResponseText = await res.text();
         debugLog("[Dewey] RAG response (raw):", rawResponseText);
         const data = rawResponseText ? (() => { try { return JSON.parse(rawResponseText); } catch { return {}; } })() : {};
-        if (data.results && data.results.length > 0) {
-          type RagResult = {
-            text?: string;
-            source_name?: string;
-            sourceName?: string;
-            source_url?: string;
-            sourceUrl?: string;
-            similarity?: number;
-            summary?: string;
-            document_summary?: string;
-          };
-          const top = (data.results as RagResult[]).slice(0, 8);
-          const docKey = (r: RagResult) => `${r.source_name ?? r.sourceName ?? "Unknown"}\0${r.source_url ?? r.sourceUrl ?? ""}`;
-          const groups = new Map<string, RagResult[]>();
-          for (const r of top) {
-            const key = docKey(r);
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key)!.push(r);
-          }
+        type RagSample = { text?: string; similarity?: number; source_url?: string; context_index?: number; context_total?: number };
+        type RagDocument = {
+          source_name?: string;
+          source_url?: string;
+          source_summary?: string;
+          sample_count?: number;
+          samples?: RagSample[];
+        };
+        const docList = (data.results ?? data.documents ?? data.items ?? []) as RagDocument[];
+        const documents = Array.isArray(docList) ? docList.slice(0, 8) : [];
+        if (documents.length > 0) {
           const lines: string[] = ["Relevant context from documents:", ""];
-          for (const [, samples] of groups) {
+          const newCitations: { sourceName: string; url: string; similarity?: number }[] = [];
+          for (const doc of documents) {
+            const samples = Array.isArray(doc.samples) ? doc.samples : [];
             const summary =
-              samples[0]?.document_summary?.trim() ||
-              samples[0]?.summary?.trim() ||
-              `Document: ${samples[0]?.source_name ?? samples[0]?.sourceName ?? "Unknown"}`;
+              (doc.source_summary && String(doc.source_summary).trim()) ||
+              `Document: ${doc.source_name ?? "Unknown"}`;
             const n = samples.length;
+            if (n === 0) continue;
             lines.push(`The following ${n} sample${n === 1 ? "" : "s"} come from a document with this summary: ${summary}`, "");
             samples.forEach((s, i) => {
               lines.push(`Sample ${i + 1} of ${n}: ${(s.text ?? "").trim()}`, "");
             });
+            const sims = samples.map((s) => s.similarity).filter((x): x is number => typeof x === "number");
+            const bestSim = sims.length > 0 ? Math.max(...sims) : undefined;
+            newCitations.push({
+              sourceName: doc.source_name ?? "Unknown",
+              url: doc.source_url ?? "#",
+              similarity: bestSim,
+            });
           }
           ragContext = "\n\n" + lines.join("\n").trimEnd() + "\n\n";
-          const newCitations = top.map((r: RagResult) => ({
-            sourceName: r.source_name || r.sourceName || "Unknown",
-            url: r.source_url || r.sourceUrl || "#",
-            similarity: r.similarity,
-          }));
           setCitations(newCitations);
         } else {
           setCitations([]);
