@@ -428,7 +428,7 @@ export function ChatView() {
     setTheme(next);
   }, [theme]);
 
-  useEffect(() => {
+  const fetchDebugConfig = useCallback(() => {
     fetch("/api/chat/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { debugConsole?: boolean } | null) => {
@@ -436,6 +436,16 @@ export function ChatView() {
       })
       .catch(() => { debugConsoleRef.current = false; });
   }, []);
+
+  useEffect(() => {
+    fetchDebugConfig();
+  }, [fetchDebugConfig]);
+
+  useEffect(() => {
+    const onFocus = () => fetchDebugConfig();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchDebugConfig]);
 
   /** When we have a selected model, fetch its context length from Ollama and log it. */
   useEffect(() => {

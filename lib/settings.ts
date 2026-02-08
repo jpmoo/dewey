@@ -105,3 +105,13 @@ export async function deleteSettings(userId: string): Promise<void> {
   delete all[userId];
   await writeAll(all);
 }
+
+/** Apply the same partial settings to every existing user. Used when admin updates defaults and chooses "apply to all users". */
+export async function applySettingsToAllUsers(partial: Partial<ChatSettings>): Promise<void> {
+  const all = await readAll();
+  if (Object.keys(partial).length === 0) return;
+  for (const userId of Object.keys(all)) {
+    all[userId] = { ...all[userId], ...partial };
+  }
+  await writeAll(all);
+}

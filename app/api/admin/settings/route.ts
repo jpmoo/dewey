@@ -8,6 +8,36 @@ import {
   writeRuntimeConfig,
   ADMIN_ENV_KEYS,
 } from "@/lib/env-admin";
+import { applySettingsToAllUsers } from "@/lib/settings";
+import type { ChatSettings } from "@/lib/settings";
+
+const ENV_KEY_TO_SETTINGS: Record<string, keyof ChatSettings> = {
+  DEWEY_DEFAULT_OLLAMA_URL: "ollamaUrl",
+  DEWEY_DEFAULT_RAG_SERVER_URL: "ragServerUrl",
+  DEWEY_DEFAULT_RAG_THRESHOLD: "ragThreshold",
+  DEWEY_DEFAULT_RAG_COLLECTIONS: "ragCollections",
+  DEWEY_DEFAULT_SYSTEM_MESSAGE: "systemMessage",
+  DEWEY_DEFAULT_MODEL: "model",
+};
+
+function envValueToSetting(key: string, value: string): unknown {
+  switch (key) {
+    case "DEWEY_DEFAULT_OLLAMA_URL":
+    case "DEWEY_DEFAULT_RAG_SERVER_URL":
+    case "DEWEY_DEFAULT_MODEL":
+      return value.trim() || undefined;
+    case "DEWEY_DEFAULT_RAG_THRESHOLD": {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case "DEWEY_DEFAULT_RAG_COLLECTIONS":
+      return value.split(",").map((s) => s.trim()).filter(Boolean);
+    case "DEWEY_DEFAULT_SYSTEM_MESSAGE":
+      return value.replace(/\\n/g, "\n") || undefined;
+    default:
+      return value;
+  }
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -68,6 +98,23 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.debugConsole === "boolean") next.debugConsole = body.debugConsole;
     if (Object.keys(next).length > 0) {
       await writeRuntimeConfig({ ...current, ...next });
+    }
+    const applyToAllUsers = Array.isArray(body.applyToAllUsers) ? body.applyToAllUsers as string[] : [];
+    if (applyToAllUsers.length > 0 && typeof body.env === "object" && body.env !== null) {
+      const partial: Partial<ChatSettings> = {};
+      for (const envKey of applyToAllUsers) {
+        const settingsKey = ENV_KEY_TO_SETTINGS[envKey];
+        if (!settingsKey) continue;
+        const raw = body.env[envKey];
+        if (typeof raw !== "string") continue;
+        const parsed = envValueToSetting(envKey, raw);
+        if (parsed !== undefined && parsed !== "") {
+          (partial as Record<string, unknown>)[settingsKey] = parsed;
+        }
+      }
+      if (Object.keys(partial).length > 0) {
+        await applySettingsToAllUsers(partial);
+      }
     }
     return NextResponse.json({ ok: true });
   } catch (e) {
