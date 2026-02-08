@@ -620,27 +620,40 @@ export function ChatView() {
         };
         // Prefer document-centric list (documents[].samples); results is a flat chunk list with no .samples
         const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
-        const documents = Array.isArray(docList) ? docList.slice(0, 8) : [];
-        if (documents.length > 0) {
+        const docArray = Array.isArray(docList) ? docList : [];
+        const withDoc: { doc: RagDocument; sample: RagSample }[] = [];
+        for (const doc of docArray) {
+          const samples = Array.isArray(doc.samples) ? doc.samples : [];
+          for (const sample of samples) {
+            withDoc.push({ doc, sample });
+          }
+        }
+        withDoc.sort((a, b) => (b.sample.similarity ?? 0) - (a.sample.similarity ?? 0));
+        const topChunks = withDoc.slice(0, 8);
+        if (topChunks.length > 0) {
+          const docKey = (d: RagDocument) => `${d.source_name ?? "Unknown"}\0${d.source_url ?? ""}`;
+          const byDoc = new Map<string, { doc: RagDocument; samples: RagSample[] }>();
+          for (const { doc, sample } of topChunks) {
+            const key = docKey(doc);
+            if (!byDoc.has(key)) byDoc.set(key, { doc, samples: [] });
+            byDoc.get(key)!.samples.push(sample);
+          }
           const lines: string[] = ["Relevant context from documents:", ""];
           const newCitations: { sourceName: string; url: string; similarity?: number }[] = [];
-          for (const doc of documents) {
-            const samples = Array.isArray(doc.samples) ? doc.samples : [];
+          for (const { doc, samples } of byDoc.values()) {
             const summary =
               (doc.source_summary && String(doc.source_summary).trim()) ||
               `Document: ${doc.source_name ?? "Unknown"}`;
             const n = samples.length;
-            if (n === 0) continue;
             lines.push(`The following ${n} sample${n === 1 ? "" : "s"} come from a document with this summary: ${summary}`, "");
             samples.forEach((s, i) => {
               lines.push(`Sample ${i + 1} of ${n}: ${(s.text ?? "").trim()}`, "");
             });
             const sims = samples.map((s) => s.similarity).filter((x): x is number => typeof x === "number");
-            const bestSim = sims.length > 0 ? Math.max(...sims) : undefined;
             newCitations.push({
               sourceName: doc.source_name ?? "Unknown",
               url: doc.source_url ?? "#",
-              similarity: bestSim,
+              similarity: sims.length > 0 ? Math.max(...sims) : undefined,
             });
           }
           ragContext = "\n\n" + lines.join("\n").trimEnd() + "\n\n";
