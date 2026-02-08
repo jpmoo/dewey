@@ -600,14 +600,16 @@ export function ChatView() {
           threshold: ragThreshold,
           limit_chunk_role: true,
         };
+        debugLog("[Dewey] RAG query text:", ragPrompt);
         debugLog("[Dewey] RAG request:", ragBody);
         const res = await fetch("/api/chat/rag/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(ragBody),
         });
-        const data = await res.json().catch(() => ({}));
-        debugLog("[Dewey] RAG response:", data);
+        const rawResponseText = await res.text();
+        debugLog("[Dewey] RAG response (raw):", rawResponseText);
+        const data = rawResponseText ? (() => { try { return JSON.parse(rawResponseText); } catch { return {}; } })() : {};
         if (data.results && data.results.length > 0) {
           type RagResult = {
             text?: string;
