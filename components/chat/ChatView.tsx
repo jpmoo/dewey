@@ -170,6 +170,8 @@ export function ChatView() {
   const citedListRef = useRef<HTMLUListElement>(null);
   const previousCitedOrderRef = useRef<string[]>([]);
   const lastShownOrderRef = useRef<string[]>([]);
+  const everSeenCitationsRef = useRef<Map<string, { sourceName: string; url: string }>>(new Map());
+  const citationKeysByTurnRef = useRef<Set<string>[]>([]);
   const introModalShownThisSessionRef = useRef(false);
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
@@ -303,6 +305,8 @@ export function ChatView() {
     setInputValue("");
     previousCitedOrderRef.current = [];
     lastShownOrderRef.current = [];
+    everSeenCitationsRef.current.clear();
+    citationKeysByTurnRef.current = [];
     setPanelCollapsed(true);
     setShowIntroModal(true);
     setIntroDraft("");
@@ -657,6 +661,13 @@ export function ChatView() {
             });
           }
           ragContext = "\n\n" + lines.join("\n").trimEnd() + "\n\n";
+          const keys = new Set<string>();
+          for (const c of newCitations) {
+            const key = `${c.sourceName}\0${c.url}`;
+            keys.add(key);
+            everSeenCitationsRef.current.set(key, { sourceName: c.sourceName, url: c.url });
+          }
+          citationKeysByTurnRef.current.push(keys);
           setCitations(newCitations);
         } else {
           setCitations([]);
@@ -1258,37 +1269,66 @@ export function ChatView() {
         </div>
       )}
 
-      {dialogCitedDocs && (
-        <div className="chat-dialog-overlay" onClick={() => setDialogCitedDocs(false)}>
-          <div className="chat-dialog cited-docs-dialog-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-            <h3 className="chat-dialog-title">Resources relevant to this conversation</h3>
-            {displayCitations.length === 0 ? (
-              <p className="cited-docs-empty">No relevant resources yet.</p>
-            ) : (
-              <ul className="cited-docs-list" ref={citedListRef}>
-                {displayCitations.map((entry, i) => {
-                  const entryKey = `${entry.sourceName}\0${entry.url}`;
-                  const prevIdx = previousCitedOrderRef.current.indexOf(entryKey);
-                  const changeState = prevIdx === -1 ? "new" : i < prevIdx ? "rose" : i > prevIdx ? "fell" : "same";
-                  const indicatorLabel = changeState === "rose" ? "Risen" : changeState === "fell" ? "Fallen" : changeState === "same" ? "Same position" : "New";
-                  const indicatorChar = changeState === "rose" ? "\u2191" : changeState === "fell" ? "\u2193" : changeState === "same" ? "\u2013" : "\u2022";
-                  return (
-                    <li key={`${entry.sourceName}|${entry.url}`}>
-                      <span className={`cited-doc-indicator cited-doc-indicator--${changeState}`} aria-label={indicatorLabel}>
-                        {indicatorChar}
-                      </span>
-                      <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
-                      <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
-                        {entry.sourceName}
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+      {dialogCitedDocs && (() => {
+        const currentKeys = new Set(displayCitations.map((c) => `${c.sourceName}\0${c.url}`));
+        const turns = citationKeysByTurnRef.current;
+        const previouslyCited: { key: string; sourceName: string; url: string; lastSeenTurn: number }[] = [];
+        everSeenCitationsRef.current.forEach((entry, key) => {
+          if (currentKeys.has(key)) return;
+          let lastSeenTurn = -1;
+          for (let i = 0; i < turns.length; i++) {
+            if (turns[i].has(key)) lastSeenTurn = i;
+          }
+          if (lastSeenTurn >= 0) previouslyCited.push({ key, ...entry, lastSeenTurn });
+        });
+        previouslyCited.sort((a, b) => b.lastSeenTurn - a.lastSeenTurn);
+        return (
+          <div className="chat-dialog-overlay" onClick={() => setDialogCitedDocs(false)}>
+            <div className="chat-dialog cited-docs-dialog-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="chat-dialog-title">Resources relevant to this conversation</h3>
+              {displayCitations.length === 0 ? (
+                <p className="cited-docs-empty">No relevant resources yet.</p>
+              ) : (
+                <ul className="cited-docs-list" ref={citedListRef}>
+                  {displayCitations.map((entry, i) => {
+                    const entryKey = `${entry.sourceName}\0${entry.url}`;
+                    const prevIdx = previousCitedOrderRef.current.indexOf(entryKey);
+                    const changeState = prevIdx === -1 ? "new" : i < prevIdx ? "rose" : i > prevIdx ? "fell" : "same";
+                    const indicatorLabel = changeState === "rose" ? "Risen" : changeState === "fell" ? "Fallen" : changeState === "same" ? "Same position" : "New";
+                    const indicatorChar = changeState === "rose" ? "\u2191" : changeState === "fell" ? "\u2193" : changeState === "same" ? "\u2013" : "\u2022";
+                    return (
+                      <li key={`${entry.sourceName}|${entry.url}`}>
+                        <span className={`cited-doc-indicator cited-doc-indicator--${changeState}`} aria-label={indicatorLabel}>
+                          {indicatorChar}
+                        </span>
+                        <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
+                        <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
+                          {entry.sourceName}
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {previouslyCited.length > 0 && (
+                <div className="cited-docs-previously">
+                  <p className="cited-docs-previously-heading">Previously cited (no longer in current results)</p>
+                  <ul className="cited-docs-list cited-docs-list-dim" aria-label="Previously cited resources">
+                    {previouslyCited.map((entry) => (
+                      <li key={entry.key}>
+                        <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
+                        <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
+                          {entry.sourceName}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {dialogNewConversationConfirm && (
         <div className="chat-dialog-overlay" onClick={() => setDialogNewConversationConfirm(false)}>
@@ -1307,6 +1347,8 @@ export function ChatView() {
                   setInputValue("");
                   previousCitedOrderRef.current = [];
                   lastShownOrderRef.current = [];
+                  everSeenCitationsRef.current.clear();
+                  citationKeysByTurnRef.current = [];
                   setShowIntroModal(true);
                   setIntroDraft("");
                   setShowIntroValidation(false);

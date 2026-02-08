@@ -628,3 +628,26 @@
   margin: 0;
   padding: 12px 0;
 }
+.dewey-chat .cited-docs-previously {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+.dewey-chat .cited-docs-previously-heading {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+  font-weight: 500;
+}
+.dewey-chat .cited-docs-list-dim {
+  opacity: 0.7;
+}
+.dewey-chat .cited-docs-list-dim .cited-doc-link {
+  color: var(--text-secondary);
+}
+.dewey-chat .cited-docs-list-dim .cited-doc-link:hover {
+  color: var(--text-primary);
+}
+.dewey-chat .cited-docs-list-dim .cited-doc-icon {
+  opacity: 0.8;
+}
