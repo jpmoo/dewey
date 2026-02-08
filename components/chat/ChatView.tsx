@@ -618,7 +618,8 @@ export function ChatView() {
           sample_count?: number;
           samples?: RagSample[];
         };
-        const docList = (data.results ?? data.documents ?? data.items ?? []) as RagDocument[];
+        // Prefer document-centric list (documents[].samples); results is a flat chunk list with no .samples
+        const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
         const documents = Array.isArray(docList) ? docList.slice(0, 8) : [];
         if (documents.length > 0) {
           const lines: string[] = ["Relevant context from documents:", ""];
