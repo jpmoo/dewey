@@ -593,22 +593,54 @@ export function ChatView() {
         const ragPrompt = lastAssistant.trim()
           ? `${lastAssistant.trim()}\n\nUser: ${text}`
           : text;
+        const ragBody = {
+          ragUrl: ragUrl.trim(),
+          prompt: ragPrompt,
+          group: ragCollections,
+          threshold: ragThreshold,
+          limit_chunk_role: true,
+        };
+        debugLog("[Dewey] RAG request:", ragBody);
         const res = await fetch("/api/chat/rag/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ragUrl: ragUrl.trim(),
-            prompt: ragPrompt,
-            group: ragCollections,
-            threshold: ragThreshold,
-            limit_chunk_role: true,
-          }),
+          body: JSON.stringify(ragBody),
         });
         const data = await res.json().catch(() => ({}));
+        debugLog("[Dewey] RAG response:", data);
         if (data.results && data.results.length > 0) {
-          const top = data.results.slice(0, 8);
-          ragContext = "\n\nRelevant context from documents:\n\n" + top.map((r: { text?: string }, i: number) => `${i + 1}. ${r.text || ""}`).join("\n\n");
-          const newCitations = top.map((r: { source_name?: string; sourceName?: string; source_url?: string; sourceUrl?: string; similarity?: number }) => ({
+          type RagResult = {
+            text?: string;
+            source_name?: string;
+            sourceName?: string;
+            source_url?: string;
+            sourceUrl?: string;
+            similarity?: number;
+            summary?: string;
+            document_summary?: string;
+          };
+          const top = (data.results as RagResult[]).slice(0, 8);
+          const docKey = (r: RagResult) => `${r.source_name ?? r.sourceName ?? "Unknown"}\0${r.source_url ?? r.sourceUrl ?? ""}`;
+          const groups = new Map<string, RagResult[]>();
+          for (const r of top) {
+            const key = docKey(r);
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key)!.push(r);
+          }
+          const lines: string[] = ["Relevant context from documents:", ""];
+          for (const [, samples] of groups) {
+            const summary =
+              samples[0]?.document_summary?.trim() ||
+              samples[0]?.summary?.trim() ||
+              `Document: ${samples[0]?.source_name ?? samples[0]?.sourceName ?? "Unknown"}`;
+            const n = samples.length;
+            lines.push(`The following ${n} sample${n === 1 ? "" : "s"} come from a document with this summary: ${summary}`, "");
+            samples.forEach((s, i) => {
+              lines.push(`Sample ${i + 1} of ${n}: ${(s.text ?? "").trim()}`, "");
+            });
+          }
+          ragContext = "\n\n" + lines.join("\n").trimEnd() + "\n\n";
+          const newCitations = top.map((r: RagResult) => ({
             sourceName: r.source_name || r.sourceName || "Unknown",
             url: r.source_url || r.sourceUrl || "#",
             similarity: r.similarity,
