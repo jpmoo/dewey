@@ -22,6 +22,40 @@ const CHAT_FONT_DEFAULT = 14;
 const CITED_DOC_ROW_HEIGHT_PX = 48;
 const CITED_DOC_ANIM_DURATION_MS = 380;
 
+const COMPLIANCE_SYSTEM_PROMPT = `You are a compliance screening layer for a public K–12 educational leadership AI system operating in New Jersey.
+
+Your task is to review the full conversation (including history) and determine whether the user is requesting or discussing content that may involve:
+
+1. Specific identifiable student information (names, detailed circumstances, assessment results, discipline cases, IEP status, health or mental health information, or other FERPA-protected data).
+2. Specific identifiable personnel matters (employee discipline, evaluations, investigations, grievances, terminations, medical information, or confidential employment details).
+3. Ongoing or potential litigation, legal strategy, attorney-client privileged material, or internal investigations.
+4. Confidential settlement terms or non-public compliance matters.
+5. Requests to draft, analyze, or comment on real internal documents that may be subject to records retention or public records law.
+6. Any content that would reasonably be considered confidential under NJ public school governance standards.
+
+Important distinction:
+
+Do NOT flag or block:
+- General leadership advice.
+- Hypothetical scenarios.
+- High-level policy discussion.
+- Structural or governance questions.
+- Generic discussions of personnel management or student support without identifiable details.
+
+Only flag if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
+
+Output format:
+
+Return ONLY one of the following:
+
+ALLOW
+or
+BLOCK
+
+If BLOCK, also provide a one-sentence reason identifying the category of concern (e.g., "Specific identifiable personnel investigation discussed.").
+
+Do not provide analysis beyond this.`;
+
 function deriveRagUrl(ollamaUrl: string) {
   try {
     const u = new URL(ollamaUrl);
@@ -156,6 +190,10 @@ export function ChatView() {
   const [connectionError, setConnectionError] = useState("");
   const [dialogSystemMessage, setDialogSystemMessage] = useState(false);
   const [dialogCitedDocs, setDialogCitedDocs] = useState(false);
+  const [complianceBlockModal, setComplianceBlockModal] = useState(false);
+  const [complianceConfirmModal, setComplianceConfirmModal] = useState(false);
+  const [pendingComplianceMessage, setPendingComplianceMessage] = useState("");
+  const [complianceBlockReason, setComplianceBlockReason] = useState("");
   const [dialogModelConnection, setDialogModelConnection] = useState(false);
   const [dialogDeleteConfirm, setDialogDeleteConfirm] = useState(false);
   const [dialogNewConversationConfirm, setDialogNewConversationConfirm] = useState(false);
@@ -579,9 +617,47 @@ export function ChatView() {
     }
   }, [ollamaUrl, ragUrl]);
 
-  const sendMessage = useCallback(async (optionalMessage?: string) => {
+  const sendMessage = useCallback(async (optionalMessage?: string, skipCompliance?: boolean) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading || !selectedModel || !ollamaUrl.trim()) return;
+
+    if (!skipCompliance) {
+      setLoading(true);
+      const historyBlob = chatHistory
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+        .join("\n\n");
+      const screeningContent =
+        (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
+      const compliancePrompt =
+        COMPLIANCE_SYSTEM_PROMPT +
+        "\n\n--- Conversation to review ---\n\n" +
+        screeningContent;
+      try {
+        const compRes = await fetch("/api/chat/ollama/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ollamaUrl: ollamaUrl.trim(),
+            model: selectedModel,
+            prompt: compliancePrompt,
+            stream: false,
+          }),
+        });
+        const compData = await compRes.json().catch(() => ({}));
+        const raw = ((compData.response ?? "") + "").trim();
+        const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
+        if (isBlock) {
+          const reason = raw.replace(/^block\s*/i, "").trim();
+          setComplianceBlockReason(reason);
+          setPendingComplianceMessage(text);
+          setComplianceBlockModal(true);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // On error, allow (do not block the user)
+      }
+    }
 
     const userMsg = { role: "user" as const, content: text };
     setChatHistory((prev) => [...prev, userMsg]);
@@ -1329,6 +1405,81 @@ export function ChatView() {
           </div>
         );
       })()}
+
+      {complianceBlockModal && (
+        <div className="chat-dialog-overlay" onClick={() => { setComplianceBlockModal(false); setPendingComplianceMessage(""); setComplianceBlockReason(""); setInputValue(""); }}>
+          <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="chat-dialog-title">Compliance notice</h3>
+            <p>
+              The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Remember that Dewey does not save anything about your conversation, so you are responsible for any required retention. Also note that Dewey is only meant to be a reflective partner, not an authority for direct answers—particularly in areas like this.
+            </p>
+            {complianceBlockReason && <p className="cited-docs-previously-heading">{complianceBlockReason}</p>}
+            <div className="chat-dialog-buttons">
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-cancel"
+                onClick={() => {
+                  setComplianceBlockModal(false);
+                  setPendingComplianceMessage("");
+                  setComplianceBlockReason("");
+                  setInputValue("");
+                }}
+              >
+                Cancel my last prompt
+              </button>
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-save"
+                onClick={() => {
+                  setComplianceBlockModal(false);
+                  setComplianceConfirmModal(true);
+                }}
+              >
+                Continue anyway…
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {complianceConfirmModal && (
+        <div className="chat-dialog-overlay" onClick={() => { setComplianceConfirmModal(false); setPendingComplianceMessage(""); setComplianceBlockReason(""); setInputValue(""); }}>
+          <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="chat-dialog-title">Confirm</h3>
+            <p>
+              You are responsible for all decisions, as well as complying with records retention and privacy requirements.
+            </p>
+            <div className="chat-dialog-buttons">
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-cancel"
+                onClick={() => {
+                  setComplianceConfirmModal(false);
+                  setPendingComplianceMessage("");
+                  setComplianceBlockReason("");
+                  setInputValue("");
+                }}
+              >
+                Cancel my last prompt
+              </button>
+              <button
+                type="button"
+                className="chat-dialog-btn chat-dialog-btn-save"
+                onClick={() => {
+                  const msg = pendingComplianceMessage;
+                  setComplianceConfirmModal(false);
+                  setPendingComplianceMessage("");
+                  setComplianceBlockReason("");
+                  setInputValue("");
+                  if (msg) sendMessage(msg, true);
+                }}
+              >
+                Continue anyway…
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {dialogNewConversationConfirm && (
         <div className="chat-dialog-overlay" onClick={() => setDialogNewConversationConfirm(false)}>
