@@ -50,11 +50,7 @@ Return ONLY one of the following:
 
 ALLOW
 or
-BLOCK
-
-If BLOCK, also provide a one-sentence reason identifying the category of concern (e.g., "Specific identifiable personnel investigation discussed.").
-
-Do not provide analysis beyond this.`;
+BLOCK`;
 
 function deriveRagUrl(ollamaUrl: string) {
   try {
@@ -193,7 +189,6 @@ export function ChatView() {
   const [complianceBlockModal, setComplianceBlockModal] = useState(false);
   const [complianceConfirmModal, setComplianceConfirmModal] = useState(false);
   const [pendingComplianceMessage, setPendingComplianceMessage] = useState("");
-  const [complianceBlockReason, setComplianceBlockReason] = useState("");
   const [dialogModelConnection, setDialogModelConnection] = useState(false);
   const [dialogDeleteConfirm, setDialogDeleteConfirm] = useState(false);
   const [dialogNewConversationConfirm, setDialogNewConversationConfirm] = useState(false);
@@ -647,8 +642,6 @@ export function ChatView() {
         const raw = ((compData.response ?? "") + "").trim();
         const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
         if (isBlock) {
-          const reason = raw.replace(/^block\s*/i, "").trim();
-          setComplianceBlockReason(reason);
           setPendingComplianceMessage(text);
           setComplianceBlockModal(true);
           setLoading(false);
@@ -1407,13 +1400,12 @@ export function ChatView() {
       })()}
 
       {complianceBlockModal && (
-        <div className="chat-dialog-overlay" onClick={() => { setComplianceBlockModal(false); setPendingComplianceMessage(""); setComplianceBlockReason(""); setInputValue(""); }}>
+        <div className="chat-dialog-overlay" onClick={() => { setComplianceBlockModal(false); setPendingComplianceMessage(""); setInputValue(""); }}>
           <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">Compliance notice</h3>
             <p>
               The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Remember that Dewey does not save anything about your conversation, so you are responsible for any required retention. Also note that Dewey is only meant to be a reflective partner, not an authority for direct answers—particularly in areas like this.
             </p>
-            {complianceBlockReason && <p className="cited-docs-previously-heading">{complianceBlockReason}</p>}
             <div className="chat-dialog-buttons">
               <button
                 type="button"
@@ -1421,7 +1413,6 @@ export function ChatView() {
                 onClick={() => {
                   setComplianceBlockModal(false);
                   setPendingComplianceMessage("");
-                  setComplianceBlockReason("");
                   setInputValue("");
                 }}
               >
@@ -1443,7 +1434,7 @@ export function ChatView() {
       )}
 
       {complianceConfirmModal && (
-        <div className="chat-dialog-overlay" onClick={() => { setComplianceConfirmModal(false); setPendingComplianceMessage(""); setComplianceBlockReason(""); setInputValue(""); }}>
+        <div className="chat-dialog-overlay" onClick={() => { setComplianceConfirmModal(false); setPendingComplianceMessage(""); }}>
           <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">Confirm</h3>
             <p>
@@ -1456,7 +1447,6 @@ export function ChatView() {
                 onClick={() => {
                   setComplianceConfirmModal(false);
                   setPendingComplianceMessage("");
-                  setComplianceBlockReason("");
                   setInputValue("");
                 }}
               >
@@ -1469,7 +1459,6 @@ export function ChatView() {
                   const msg = pendingComplianceMessage;
                   setComplianceConfirmModal(false);
                   setPendingComplianceMessage("");
-                  setComplianceBlockReason("");
                   setInputValue("");
                   if (msg) sendMessage(msg, true);
                 }}
