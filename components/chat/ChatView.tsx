@@ -181,6 +181,19 @@ function parseRoutingResponse(raw: string): RoutingResult | null {
   return null;
 }
 
+/** One-line debug string for the response bubble when verdict is ALLOW. */
+function buildRoutingDebugLine(routing: RoutingResult | null): string {
+  if (routing?.verdict !== "ALLOW") return "";
+  const parts = [
+    "allow",
+    routing.mode && routing.mode !== "n/a" ? routing.mode : undefined,
+    routing.use_rag ? "use_rag=true" : undefined,
+    routing.risk_level && routing.risk_level !== "n/a" ? `risk=${routing.risk_level}` : undefined,
+    routing.answerability && routing.answerability !== "n/a" ? routing.answerability : undefined,
+  ].filter(Boolean);
+  return `[${parts.join(" ")}]`;
+}
+
 function buildRoutingBlock(routing: RoutingResult | null): string {
   if (routing?.verdict !== "ALLOW") return "";
   const mode = routing.mode && routing.mode !== "n/a" ? routing.mode : "answer_now";
@@ -1019,8 +1032,9 @@ export function ChatView() {
         return;
       }
       const decoder = new TextDecoder();
-      let assistantContent = "";
-      setChatHistory((prev) => [...prev, { role: "assistant", content: "" }]);
+      const routingDebugLine = buildRoutingDebugLine(routingResultRef.current);
+      let assistantContent = routingDebugLine ? `${routingDebugLine}\n\n` : "";
+      setChatHistory((prev) => [...prev, { role: "assistant", content: assistantContent }]);
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
