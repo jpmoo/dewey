@@ -207,9 +207,14 @@ export function ChatView() {
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
   const debugConsoleRef = useRef(false);
+  /** Client override: ?dewey_debug=1 in URL or localStorage DEWEY_DEBUG=1 */
+  const debugOverride = typeof window !== "undefined" && (
+    (typeof URLSearchParams !== "undefined" && new URLSearchParams(window.location.search).get("dewey_debug") === "1") ||
+    (typeof localStorage !== "undefined" && localStorage.getItem("DEWEY_DEBUG") === "1")
+  );
   const debugLog = useCallback((...args: unknown[]) => {
-    if (debugConsoleRef.current) console.log(...args);
-  }, []);
+    if (debugConsoleRef.current || debugOverride) console.log(...args);
+  }, [debugOverride]);
 
   /** Dedupe citations by source (name+url), keep max similarity, sort by top similarity desc */
   const displayCitations = useMemo(() => {
@@ -467,10 +472,14 @@ export function ChatView() {
     fetch("/api/chat/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { debugConsole?: boolean } | null) => {
-        debugConsoleRef.current = !!data?.debugConsole;
+        const enabled = debugOverride || !!data?.debugConsole;
+        debugConsoleRef.current = enabled;
+        if (enabled) {
+          console.log("[Dewey] Debug console ON — logging all AI calls and responses. (Override: add ?dewey_debug=1 to the URL or set localStorage DEWEY_DEBUG=1)");
+        }
       })
-      .catch(() => { debugConsoleRef.current = false; });
-  }, []);
+      .catch(() => { debugConsoleRef.current = debugOverride; });
+  }, [debugOverride]);
 
   useEffect(() => {
     fetchDebugConfig();
@@ -625,6 +634,7 @@ export function ChatView() {
       "\n\n--- Conversation to review ---\n\n" +
       screeningContent;
     try {
+      debugLog("[Dewey] AI call: compliance check", { model: selectedModel, promptLength: compliancePrompt.length });
       const compRes = await fetch("/api/chat/ollama/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -638,12 +648,14 @@ export function ChatView() {
       const compData = await compRes.json().catch(() => ({}));
       const raw = ((compData.response ?? "") + "").trim();
       const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
+      debugLog("[Dewey] AI response: compliance", { result: isBlock ? "BLOCK" : "ALLOW", rawSnippet: raw.slice(0, 300) });
       if (isBlock) {
         setComplianceBlockModal(true);
         setLoading(false);
         return;
       }
-    } catch {
+    } catch (e) {
+      debugLog("[Dewey] AI response: compliance", { error: e instanceof Error ? e.message : "Request failed" });
       // On error, allow (do not block the user)
     }
 
@@ -668,16 +680,17 @@ export function ChatView() {
           threshold: ragThreshold,
           limit_chunk_role: true,
         };
-        debugLog("[Dewey] RAG query text:", ragPrompt);
-        debugLog("[Dewey] RAG request:", ragBody);
+        debugLog("[Dewey] AI call: RAG query", { promptLength: ragPrompt.length, group: ragCollections, threshold: ragThreshold });
         const res = await fetch("/api/chat/rag/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(ragBody),
         });
         const rawResponseText = await res.text();
-        debugLog("[Dewey] RAG response (raw):", rawResponseText);
         const data = rawResponseText ? (() => { try { return JSON.parse(rawResponseText); } catch { return {}; } })() : {};
+        const docListForLog = (data.documents ?? data.results ?? data.items ?? []) as unknown[];
+        const docCount = Array.isArray(docListForLog) ? docListForLog.length : 0;
+        debugLog("[Dewey] AI response: RAG", { status: res.status, docCount, rawPreview: rawResponseText.slice(0, 500) });
         type RagSample = { text?: string; similarity?: number; source_url?: string; context_index?: number; context_total?: number };
         type RagDocument = {
           source_name?: string;
@@ -767,6 +780,7 @@ export function ChatView() {
       const historyText = historyForSummary.map((m) => `${m.role}: ${m.content}`).join("\n\n");
       const summaryPrompt = `Please provide a concise summary of the following conversation history:\n\n${historyText}\n\nSummary:`;
       try {
+        debugLog("[Dewey] AI call: history summarization", { model: selectedModel, promptLength: summaryPrompt.length });
         const sumRes = await fetch("/api/chat/ollama/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -779,6 +793,7 @@ export function ChatView() {
         });
         const sumData = await sumRes.json().catch(() => ({}));
         const summary = sumRes.ok && typeof sumData.response === "string" ? sumData.response.trim() : "";
+        debugLog("[Dewey] AI response: summarization", summary ? { summaryLength: summary.length, snippet: summary.slice(0, 200) } : { ok: sumRes.ok, error: (sumData as { error?: string }).error });
         if (summary) {
           const summaryMsg: { role: "user" | "assistant"; content: string } = {
             role: "assistant",
@@ -831,6 +846,7 @@ export function ChatView() {
       }
     }
 
+    debugLog("[Dewey] AI call: main generate (streaming)", { model: selectedModel, promptLength: fullPrompt.length });
     debugLog("[Dewey] Full prompt sent to model:", fullPrompt);
 
     try {
@@ -846,11 +862,13 @@ export function ChatView() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${err.error || res.status}` }]);
+        debugLog("[Dewey] AI response: main (error)", { status: res.status, error: (err as { error?: string }).error });
+        setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(err as { error?: string }).error || res.status}` }]);
         return;
       }
       const reader = res.body?.getReader();
       if (!reader) {
+        debugLog("[Dewey] AI response: main (error)", { error: "No response stream" });
         setChatHistory((prev) => [...prev, { role: "assistant", content: "Error: No response stream" }]);
         return;
       }
@@ -878,8 +896,10 @@ export function ChatView() {
           }
         }
       }
+      debugLog("[Dewey] AI response: main (streaming complete)", { responseLength: assistantContent.length, snippet: assistantContent.slice(0, 400) });
       if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight;
     } catch (e) {
+      debugLog("[Dewey] AI response: main (exception)", { error: e instanceof Error ? e.message : "Request failed" });
       setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
     } finally {
       setLoading(false);

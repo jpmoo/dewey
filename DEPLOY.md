@@ -83,6 +83,12 @@ If you keep the default (`./data`), ensure the app can write to `<project>/data`
 
 ## 5. Run the app
 
+**Stop any existing Dewey process on port 3000** (run this before starting or restarting if you’re not using PM2):
+
+```bash
+kill $(lsof -t -i :3000) 2>/dev/null; sleep 2
+```
+
 **One-off (foreground):**
 
 ```bash
@@ -182,12 +188,102 @@ Ensure `NEXTAUTH_URL` is `https://dewey.example.com` and that OAuth callback URL
 
 ## 8. Updating the app
 
+**If using PM2:**
+
 ```bash
 cd /opt/dewey
 git pull   # or replace files
 npm ci
 npm run build
-pm2 restart dewey   # if using PM2
+pm2 restart dewey
+```
+
+**If running with `npm start` (no PM2), stop the old process first, then rebuild and start:**
+
+```bash
+cd /opt/dewey   # or ~/dewey
+kill $(lsof -t -i :3000) 2>/dev/null; sleep 2
+git pull   # or replace files
+npm ci
+npm run build
+npm start
 ```
 
 `DEWEY_DATA_DIR` (and your backup of that directory) is separate from the app code; keep it across deploys.
+
+---
+
+## 9. Troubleshooting: "Application error" and 400 on static chunks
+
+If the app shows "Application error" and the browser console reports **400 (Bad Request)** on `_next/static/chunks/...` or `_next/static/media/...`, plus **ChunkLoadError** and React error #423, the server (or something in front of it) is rejecting requests for static assets.
+
+**Checks:**
+
+1. **Reverse proxy (nginx / Caddy)**  
+   If you use a proxy in front of Next.js, it must pass **all** paths to the app, including `/_next/static/...`. A single `location /` that proxies to the Node app is correct. Do not add a separate `location /_next/` that serves files from disk unless you know what you’re doing—let the Next.js process serve `_next` and the rest of the app.
+
+2. **Confirm who returns 400**  
+   On the server that runs Dewey, run:
+   ```bash
+   curl -I http://127.0.0.1:3000/
+   ```
+   Then open the app in the browser, copy a failing chunk URL from the Network tab (e.g. `http://jpmoo.tplinkdns.com:3000/_next/static/chunks/app/page-....js`), and run the **same path** against localhost:
+   ```bash
+   curl -I "http://127.0.0.1:3000/_next/static/chunks/app/page-a4edc00a813e6795.js"
+   ```
+   - If **127.0.0.1:3000** returns 400, the Next.js process (or something on that port) is rejecting the request—see step 2b.
+   - If **127.0.0.1** returns 200 but the browser URL returns 400, the problem is between the client and the server (e.g. proxy, router, or firewall rewriting or blocking the request).
+
+2b. **When Next.js itself returns 400 for a chunk**  
+   That usually means the chunk file the HTML asks for is not in the current build (stale or mismatched build). On the server, in the app directory:
+
+   ```bash
+   # Does this exact chunk exist?
+   ls -la .next/static/chunks/app/page-a4edc00a813e6795.js
+
+   # What page chunks do exist?
+   ls .next/static/chunks/app/page-*.js
+   ```
+
+   If the file is missing, do a **clean rebuild** and restart (stop anything on 3000 first if not using PM2):
+
+   ```bash
+   cd /opt/dewey   # or ~/dewey
+   kill $(lsof -t -i :3000) 2>/dev/null; sleep 2
+   rm -rf .next
+   npm run build
+   pm2 restart dewey   # if using PM2; otherwise: npm start
+   ```
+
+   Then hard-refresh the browser (Ctrl+Shift+R / Cmd+Shift+R) or use incognito so it doesn’t use cached HTML pointing at old chunk names.
+
+2c. **Ensure the right process is serving**  
+   If you still see the error after a clean rebuild and browser refresh, the process on port 3000 may not be the app you just built (e.g. it’s running from another directory or an old instance). On the server:
+
+   ```bash
+   lsof -i :3000
+   # or:  ss -tlnp | grep 3000
+   ```
+
+   Note the PID. Check that process’s working directory:
+
+   ```bash
+   pwdx <PID>
+   # or:  ls -la /proc/<PID>/cwd
+   ```
+
+   It must be your Dewey app directory (e.g. `/home/jpmoo/dewey`). If it isn’t, stop that process and start the app from the directory where you ran `npm run build`:
+
+   ```bash
+   kill $(lsof -t -i :3000) 2>/dev/null; sleep 2
+   cd ~/dewey
+   npm start
+   ```
+
+   (Or use PM2/systemd with `cwd` set to that directory.) Then open the site in a fresh incognito window and test again.
+
+3. **Rebuild and restart**  
+   After every `npm run build`, restart the app (`pm2 restart dewey` or equivalent). Old build artifacts plus new HTML can cause wrong chunk names; usually that’s 404, but a clean rebuild rules out mismatch.
+
+4. **Hostname / port**  
+   You’re using `http://jpmoo.tplinkdns.com:3000`. If a reverse proxy or router is in front of port 3000, ensure it forwards the full path and doesn’t strip or alter `/_next/static/...` and that it doesn’t return 400 for those paths (e.g. some security or “application control” features do).
