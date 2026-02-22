@@ -22,193 +22,35 @@ const CHAT_FONT_DEFAULT = 14;
 const CITED_DOC_ROW_HEIGHT_PX = 48;
 const CITED_DOC_ANIM_DURATION_MS = 380;
 
-/** Compliance + conversation-routing layer: outputs JSON with verdict (ALLOW/BLOCK), routing (mode, use_rag, etc.). */
-const COMPLIANCE_ROUTING_SYSTEM_PROMPT = `You are a compliance + conversation-routing layer for a public K–12 educational leadership AI system operating in New Jersey.
+const COMPLIANCE_SYSTEM_PROMPT = `You are a compliance screening layer for a public K–12 educational leadership AI system operating in New Jersey.
 
-You will be given the full conversation (including history) and the latest user prompt.
-
-Your job is NOT to answer the user.
-Your job is to decide:
-1) Whether the assistant should proceed at all (ALLOW or BLOCK), based on confidentiality/compliance risk.
-2) If ALLOW, what the next conversational phase should be:
-   - answer_now
-   - answer_plus_questions (answer plus up to 2 targeted clarifying questions)
-   - ask_first (ask up to 2 clarifying questions before answering)
-3) If ALLOW, whether to retrieve domain knowledge (RAG) before answering.
-
-CRITICAL: Assume RAG is available if needed. Do not treat lack of domain knowledge in the visible conversation as "insufficient"; instead, mark it as requires_rag.
-
-────────────────────────────────────────────────────────────
-COMPLIANCE SCREEN (BLOCK CONDITIONS)
-
-Determine whether the conversation is requesting or discussing content that may involve:
+Your task is to review the full conversation (including history) and determine whether the user is requesting or discussing content that may involve:
 
 1. Specific identifiable student information (names, detailed circumstances, assessment results, discipline cases, IEP status, health or mental health information, or other FERPA-protected data).
 2. Specific identifiable personnel matters (employee discipline, evaluations, investigations, grievances, terminations, medical information, or confidential employment details).
 3. Ongoing or potential litigation, legal strategy, attorney-client privileged material, or internal investigations.
 4. Confidential settlement terms or non-public compliance matters.
-5. Requests to draft, analyze, or comment on real internal documents that may be subject to records retention or public records law (especially if the user provides or describes the document in a case-specific way).
+5. Requests to draft, analyze, or comment on real internal documents that may be subject to records retention or public records law.
 6. Any content that would reasonably be considered confidential under NJ public school governance standards.
 
 Important distinction:
-Do NOT block:
+
+Do NOT flag or block:
 - General leadership advice.
 - Hypothetical scenarios.
 - High-level policy discussion.
 - Structural or governance questions.
 - Generic discussions of personnel management or student support without identifiable details.
 
-Only BLOCK if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
+Only flag if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
 
-If you BLOCK, do not provide questions or advice. Just output BLOCK and reason codes in JSON.
+Output format:
 
-────────────────────────────────────────────────────────────
-ROUTING TASK (ONLY IF ALLOW)
+Return ONLY one of the following:
 
-A) Determine answerability classification:
-
-- self_contained:
-  Can be answered with general coaching knowledge and the visible context.
-
-- requires_rag:
-  Would be improved or enabled by retrieving domain knowledge (district frameworks, PLC protocols, leadership playbooks, policy summaries, etc.). Choose this when the missing piece is "knowledge," not "user context."
-
-- insufficient_even_with_rag:
-  Missing user-specific context is load-bearing such that answering would likely be wrong or irresponsible even if domain knowledge were retrieved.
-
-B) Determine risk_level:
-- low: routine coaching, planning, facilitation, general instruction
-- moderate: could drift into confidential areas; needs cautious framing
-- high: near the BLOCK boundary but still hypothetical/high-level; requires strong boundary language and minimal probing
-
-C) Choose mode (next phase):
-- answer_now:
-  Provide a useful response immediately, stating assumptions if needed.
-
-- answer_plus_questions:
-  Provide a useful first move immediately AND ask up to 2 load-bearing questions that would materially change the next step.
-
-- ask_first:
-  Ask up to 2 load-bearing questions BEFORE answering, ONLY when missing context makes answering irresponsible.
-
-Rules:
-- Prefer answering with stated assumptions over asking questions.
-- Never ask more than 2 questions.
-- Ask only load-bearing questions (answers would materially change recommendations).
-- Do not ask questions that seek identifying student/personnel details. If a question would elicit confidential details, do NOT ask it; instead choose safer, de-identified questions or provide general guidance.
-
-D) Decide use_rag:
-- true if answerability is requires_rag
-- false otherwise (unless you have a strong reason)
-
-E) Provide assumptions_to_state (0–3 items):
-Short assumptions the assistant should explicitly state when answering.
-
-F) Provide first_move_anyway:
-A short, safe "first move" the assistant could offer even if questions are needed.
-
-────────────────────────────────────────────────────────────
-OUTPUT FORMAT (JSON ONLY)
-
-Return ONLY valid JSON in this exact schema:
-
-{
-  "verdict": "ALLOW" | "BLOCK",
-  "block_reason_codes": [
-    "student_identifiable",
-    "personnel_identifiable",
-    "legal_litigation",
-    "privileged_investigation",
-    "confidential_settlement",
-    "internal_document_case_specific",
-    "records_retention_sensitive",
-    "other_confidential",
-    "none"
-  ],
-  "answerability": "self_contained" | "requires_rag" | "insufficient_even_with_rag" | "n/a",
-  "mode": "answer_now" | "answer_plus_questions" | "ask_first" | "n/a",
-  "risk_level": "low" | "moderate" | "high" | "n/a",
-  "use_rag": true | false,
-  "reason_codes": [
-    "ambiguity_high",
-    "missing_context",
-    "needs_rag",
-    "conversation_drift",
-    "near_boundary_high_risk",
-    "none"
-  ],
-  "assumptions_to_state": [],
-  "questions_to_ask": [],
-  "first_move_anyway": ""
-}
-
-Additional constraints:
-- If verdict is BLOCK: set answerability/mode/risk_level to "n/a", use_rag false, questions_to_ask empty, first_move_anyway empty.
-- If verdict is ALLOW: block_reason_codes must be ["none"].
-- questions_to_ask must contain 0–2 items max.
-- Output JSON only. No prose. No markdown. No trailing commentary.`;
-
-/** Parsed routing result from the compliance+routing layer (JSON response). */
-type RoutingResult = {
-  verdict: "ALLOW" | "BLOCK";
-  block_reason_codes?: string[];
-  answerability?: string;
-  mode?: string;
-  risk_level?: string;
-  use_rag?: boolean;
-  reason_codes?: string[];
-  assumptions_to_state?: string[];
-  questions_to_ask?: string[];
-  first_move_anyway?: string;
-};
-
-/** Extract JSON from model response (strip markdown code blocks, trim). */
-function parseRoutingResponse(raw: string): RoutingResult | null {
-  const s = (raw ?? "").trim();
-  if (!s) return null;
-  let jsonStr = s;
-  const codeBlock = /^```(?:json)?\s*([\s\S]*?)```\s*$/im.exec(s);
-  if (codeBlock) jsonStr = codeBlock[1].trim();
-  try {
-    const parsed = JSON.parse(jsonStr) as RoutingResult;
-    if (parsed && (parsed.verdict === "ALLOW" || parsed.verdict === "BLOCK")) return parsed;
-  } catch {
-    // fallback: legacy BLOCK check
-    if (/^block\s/i.test(s) || s.toUpperCase().startsWith("BLOCK")) {
-      return { verdict: "BLOCK", block_reason_codes: ["legacy_block"] };
-    }
-  }
-  return null;
-}
-
-/** One-line debug string for the response bubble when verdict is ALLOW. */
-function buildRoutingDebugLine(routing: RoutingResult | null): string {
-  if (routing?.verdict !== "ALLOW") return "";
-  const parts = [
-    "allow",
-    routing.mode && routing.mode !== "n/a" ? routing.mode : undefined,
-    routing.use_rag ? "use_rag=true" : undefined,
-    routing.risk_level && routing.risk_level !== "n/a" ? `risk=${routing.risk_level}` : undefined,
-    routing.answerability && routing.answerability !== "n/a" ? routing.answerability : undefined,
-  ].filter(Boolean);
-  return `[${parts.join(" ")}]`;
-}
-
-function buildRoutingBlock(routing: RoutingResult | null): string {
-  if (routing?.verdict !== "ALLOW") return "";
-  const mode = routing.mode && routing.mode !== "n/a" ? routing.mode : "answer_now";
-  const risk = routing.risk_level && routing.risk_level !== "n/a" ? routing.risk_level : "low";
-  let block = "Conversation routing for this turn:\n";
-  block += `- Mode: ${mode}. Risk level: ${risk}.\n`;
-  if (routing.use_rag) block += "- RAG was recommended; use any retrieved context above if available.\n";
-  const assumptions = Array.isArray(routing.assumptions_to_state) ? routing.assumptions_to_state : [];
-  if (assumptions.length > 0) block += `- State these assumptions when answering: ${assumptions.join("; ")}\n`;
-  const questions = Array.isArray(routing.questions_to_ask) ? routing.questions_to_ask : [];
-  if (questions.length > 0) block += `- Ask these load-bearing questions (up to 2): ${questions.join("; ")}\n`;
-  const firstMove = (routing.first_move_anyway ?? "").trim();
-  if (firstMove) block += `- Optional first move to offer: ${firstMove}\n`;
-  return block + "\n";
-}
+ALLOW
+or
+BLOCK`;
 
 function deriveRagUrl(ollamaUrl: string) {
   try {
@@ -345,9 +187,6 @@ export function ChatView() {
   const [dialogSystemMessage, setDialogSystemMessage] = useState(false);
   const [dialogCitedDocs, setDialogCitedDocs] = useState(false);
   const [complianceBlockModal, setComplianceBlockModal] = useState(false);
-  const [complianceConfirmModal, setComplianceConfirmModal] = useState(false);
-  const [pendingComplianceMessage, setPendingComplianceMessage] = useState("");
-  const [pendingBlockReasonCodes, setPendingBlockReasonCodes] = useState<string[]>([]);
   const [dialogModelConnection, setDialogModelConnection] = useState(false);
   const [dialogDeleteConfirm, setDialogDeleteConfirm] = useState(false);
   const [dialogNewConversationConfirm, setDialogNewConversationConfirm] = useState(false);
@@ -364,7 +203,6 @@ export function ChatView() {
   const lastShownOrderRef = useRef<string[]>([]);
   const everSeenCitationsRef = useRef<Map<string, { sourceName: string; url: string }>>(new Map());
   const citationKeysByTurnRef = useRef<Set<string>[]>([]);
-  const routingResultRef = useRef<RoutingResult | null>(null);
   const introModalShownThisSessionRef = useRef(false);
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
@@ -772,52 +610,41 @@ export function ChatView() {
     }
   }, [ollamaUrl, ragUrl]);
 
-  const sendMessage = useCallback(async (optionalMessage?: string, skipCompliance?: boolean) => {
+  const sendMessage = useCallback(async (optionalMessage?: string) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading || !selectedModel || !ollamaUrl.trim()) return;
 
-    if (!skipCompliance) {
-      setLoading(true);
-      routingResultRef.current = null;
-      const historyBlob = chatHistory
-        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-        .join("\n\n");
-      const screeningContent =
-        (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
-      const compliancePrompt =
-        COMPLIANCE_ROUTING_SYSTEM_PROMPT +
-        "\n\n--- Full conversation and latest user prompt ---\n\n" +
-        screeningContent;
-      try {
-        const compRes = await fetch("/api/chat/ollama/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ollamaUrl: ollamaUrl.trim(),
-            model: selectedModel,
-            prompt: compliancePrompt,
-            stream: false,
-          }),
-        });
-        const compData = await compRes.json().catch(() => ({}));
-        const raw = ((compData.response ?? "") + "").trim();
-        const parsed = parseRoutingResponse(raw);
-        if (parsed?.verdict === "BLOCK") {
-          setPendingComplianceMessage(text);
-          setPendingBlockReasonCodes(Array.isArray(parsed.block_reason_codes) ? parsed.block_reason_codes : ["block"]);
-          setComplianceBlockModal(true);
-          setLoading(false);
-          return;
-        }
-        if (parsed?.verdict === "ALLOW") {
-          routingResultRef.current = parsed;
-        } else if (parsed?.verdict !== "BLOCK") {
-          // Allowed through but no parseable routing (e.g. plain "ALLOW" or malformed JSON) — set minimal so debug line shows
-          routingResultRef.current = { verdict: "ALLOW" };
-        }
-      } catch {
-        // On error, allow (do not block the user)
+    setLoading(true);
+    const historyBlob = chatHistory
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n\n");
+    const screeningContent =
+      (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
+    const compliancePrompt =
+      COMPLIANCE_SYSTEM_PROMPT +
+      "\n\n--- Conversation to review ---\n\n" +
+      screeningContent;
+    try {
+      const compRes = await fetch("/api/chat/ollama/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ollamaUrl: ollamaUrl.trim(),
+          model: selectedModel,
+          prompt: compliancePrompt,
+          stream: false,
+        }),
+      });
+      const compData = await compRes.json().catch(() => ({}));
+      const raw = ((compData.response ?? "") + "").trim();
+      const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
+      if (isBlock) {
+        setComplianceBlockModal(true);
+        setLoading(false);
+        return;
       }
+    } catch {
+      // On error, allow (do not block the user)
     }
 
     const userMsg = { role: "user" as const, content: text };
@@ -826,10 +653,7 @@ export function ChatView() {
     setLoading(true);
 
     let ragContext = "";
-    const routing = routingResultRef.current;
-    const selectedRag =
-      (ragCollections.length > 0 && ragUrl.trim()) ||
-      (!!routing?.use_rag && !!ragUrl.trim());
+    const selectedRag = ragCollections.length > 0 && ragUrl.trim();
     if (selectedRag) {
       try {
         // Include last exchange so RAG retrieval stays conversation-aware when topic shifts
@@ -928,7 +752,6 @@ export function ChatView() {
     if (userContext.trim()) userContextBlock.push(`Context about school/office: ${userContext.trim()}`);
     if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
     if (ragContext) fullPrompt += ragContext;
-    fullPrompt += buildRoutingBlock(routing);
     chatHistory.forEach((m) => {
       fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
     });
@@ -969,7 +792,6 @@ export function ChatView() {
           if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
           if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
           if (ragContext) fullPrompt += ragContext;
-          fullPrompt += buildRoutingBlock(routing);
           newHistory.forEach((m) => {
             fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
           });
@@ -983,7 +805,6 @@ export function ChatView() {
             if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
             if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
             if (ragContext) fullPrompt += ragContext;
-            fullPrompt += buildRoutingBlock(routing);
             [...kept, userMsg].forEach((m) => {
               fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
             });
@@ -1000,7 +821,6 @@ export function ChatView() {
           if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
           if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
           if (ragContext) fullPrompt += ragContext;
-          fullPrompt += buildRoutingBlock(routing);
           [...kept, userMsg].forEach((m) => {
             fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
           });
@@ -1035,9 +855,8 @@ export function ChatView() {
         return;
       }
       const decoder = new TextDecoder();
-      const routingDebugLine = buildRoutingDebugLine(routingResultRef.current);
-      let assistantContent = routingDebugLine ? `${routingDebugLine}\n\n` : "";
-      setChatHistory((prev) => [...prev, { role: "assistant", content: assistantContent }]);
+      let assistantContent = "";
+      setChatHistory((prev) => [...prev, { role: "assistant", content: "" }]);
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1063,7 +882,6 @@ export function ChatView() {
     } catch (e) {
       setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
     } finally {
-      routingResultRef.current = null;
       setLoading(false);
     }
   }, [inputValue, loading, selectedModel, ollamaUrl, ragUrl, ragCollections, ragThreshold, systemMessage, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, modelContextLength]);
@@ -1577,77 +1395,22 @@ export function ChatView() {
       })()}
 
       {complianceBlockModal && (
-        <div className="chat-dialog-overlay" onClick={() => { setComplianceBlockModal(false); setPendingComplianceMessage(""); setPendingBlockReasonCodes([]); setInputValue(""); }}>
+        <div className="chat-dialog-overlay" onClick={() => { setComplianceBlockModal(false); setInputValue(""); }}>
           <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">Compliance notice</h3>
             <p>
               The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Remember that Dewey does not save anything about your conversation, so you are responsible for any required retention. Also note that Dewey is only meant to be a reflective partner, not an authority for direct answers—particularly in areas like this.
             </p>
-            {pendingBlockReasonCodes.length > 0 && (
-              <p className="chat-dialog-reason-codes" style={{ fontSize: "0.9rem", opacity: 0.9, marginTop: "0.5rem" }}>
-                Reason codes: {pendingBlockReasonCodes.filter((c) => c !== "none").join(", ") || "block"}
-              </p>
-            )}
             <div className="chat-dialog-buttons">
-              <button
-                type="button"
-                className="chat-dialog-btn chat-dialog-btn-cancel"
-                onClick={() => {
-                  setComplianceBlockModal(false);
-                  setPendingComplianceMessage("");
-                  setPendingBlockReasonCodes([]);
-                  setInputValue("");
-                }}
-              >
-                Cancel my last prompt
-              </button>
               <button
                 type="button"
                 className="chat-dialog-btn chat-dialog-btn-save"
                 onClick={() => {
                   setComplianceBlockModal(false);
-                  setComplianceConfirmModal(true);
-                }}
-              >
-                Continue anyway…
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {complianceConfirmModal && (
-        <div className="chat-dialog-overlay" onClick={() => { setComplianceConfirmModal(false); setPendingComplianceMessage(""); setPendingBlockReasonCodes([]); }}>
-          <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-            <h3 className="chat-dialog-title">Confirm</h3>
-            <p>
-              You are responsible for all decisions, as well as complying with records retention and privacy requirements.
-            </p>
-            <div className="chat-dialog-buttons">
-              <button
-                type="button"
-                className="chat-dialog-btn chat-dialog-btn-cancel"
-                onClick={() => {
-                  setComplianceConfirmModal(false);
-                  setPendingComplianceMessage("");
                   setInputValue("");
                 }}
               >
-                Cancel my last prompt
-              </button>
-              <button
-                type="button"
-                className="chat-dialog-btn chat-dialog-btn-save"
-                onClick={() => {
-                  const msg = pendingComplianceMessage;
-                  setComplianceConfirmModal(false);
-                  setPendingComplianceMessage("");
-                  setPendingBlockReasonCodes([]);
-                  setInputValue("");
-                  if (msg) sendMessage(msg, true);
-                }}
-              >
-                Continue anyway…
+                OK
               </button>
             </div>
           </div>
