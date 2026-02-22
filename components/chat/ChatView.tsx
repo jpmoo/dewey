@@ -811,6 +811,9 @@ export function ChatView() {
         }
         if (parsed?.verdict === "ALLOW") {
           routingResultRef.current = parsed;
+        } else if (parsed?.verdict !== "BLOCK") {
+          // Allowed through but no parseable routing (e.g. plain "ALLOW" or malformed JSON) — set minimal so debug line shows
+          routingResultRef.current = { verdict: "ALLOW" };
         }
       } catch {
         // On error, allow (do not block the user)
