@@ -125,6 +125,8 @@ module.exports = {
 
 Then: `pm2 start ecosystem.config.cjs`.
 
+**After a new deploy (pull + build):** Restart the process so it serves the new build (e.g. `pm2 restart dewey` or kill and run `npm start` again). If users see **ChunkLoadError** or 400 on `_next/static/chunks/...`, the browser is still using cached HTML that points at old chunk filenames. Have them **hard refresh** (Ctrl+Shift+R / Cmd+Shift+R) or clear the site (or use a new incognito window; the app now sends no-store for pages so future deploys avoid this)’s cache for that origin.
+
 ---
 
 ## 6. Reverse proxy and HTTPS (optional)
