@@ -40,7 +40,7 @@
     {
       "name": "problem_of_practice_implementing",
       "display_name": "Problem of Practice — In Implementation",
-      "description": "The leader has a plan in motion and is navigating what is happening as they execute it.",
+      "description": "The leader has a plan in motion to rectify a specific problem of practiceand is navigating what is happening as they execute it.",
       "phase_sequence": [
         "implementation",
         "interrogate_results"
@@ -56,7 +56,7 @@
     {
       "name": "problem_of_practice_have_results",
       "display_name": "Problem of Practice — Examining Results",
-      "description": "The leader has implemented something and has results to examine. Needs help interpreting what happened and deciding what comes next.",
+      "description": "The leader has implemented something to rectify a specific problem of practice and has results to examine. Needs help interpreting what happened and deciding what comes next.",
       "phase_sequence": [
         "interrogate_results"
       ],
@@ -72,7 +72,7 @@
     {
       "name": "change_initiative",
       "display_name": "Change Initiative",
-      "description": "The leader is planning or managing a change effort that involves moving people. Combines problem framing, stakeholder strategy, and action planning.",
+      "description": "The leader is planning or managing a change effort that involves moving people to a new way of doing something. Combines problem framing, stakeholder strategy, action planning, and implementation.",
       "phase_sequence": [
         "current_state",
         "conditions_for_success",
@@ -85,7 +85,8 @@
         "I need to get people on board",
         "There is resistance to",
         "I am trying to shift the culture",
-        "We are moving to a new approach and people are not sure about it"
+        "We are moving to a new approach and people are not sure about it",
+        "This is a big change and I need to help people understand it"
       ]
     },
     {
