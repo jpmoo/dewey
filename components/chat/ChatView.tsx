@@ -195,6 +195,7 @@ export function ChatView() {
   const [introDraft, setIntroDraft] = useState("");
   const [showIntroValidation, setShowIntroValidation] = useState(false);
   const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
+  const [arcClassificationResult, setArcClassificationResult] = useState<{ arc: string; raw?: string } | null>(null);
   const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
   const [systemMessageDraft, setSystemMessageDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -347,6 +348,7 @@ export function ChatView() {
     setShowIntroModal(true);
     setIntroDraft("");
     setShowIntroValidation(false);
+    setArcClassificationResult(null);
   }, [sessionStatus, session?.user?.id]);
 
   const saveSettings = useCallback(
@@ -925,8 +927,66 @@ export function ChatView() {
     });
     setShowIntroModal(false);
     setIntroDraft("");
-    sendMessage(text);
-  }, [introDraft, sendMessage, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext]);
+    setArcClassificationResult(null);
+    if (!selectedModel?.trim() || !ollamaUrl?.trim()) {
+      setArcClassificationResult({ arc: "ERROR", raw: "Please connect to Ollama and select a model in settings." });
+      return;
+    }
+    setLoading(true);
+    try {
+      const arcsRes = await fetch("/api/coaching/arcs");
+      if (!arcsRes.ok) {
+        setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
+        return;
+      }
+      const arcsData = (await arcsRes.json()) as { arcs?: { name: string; display_name?: string; description?: string; diagnostic_markers?: string[] }[] };
+      const arcs = Array.isArray(arcsData.arcs) ? arcsData.arcs : [];
+      const arcList = arcs
+        .map(
+          (a) =>
+            `- name: ${a.name}\n  description: ${a.description ?? ""}\n  diagnostic_markers: ${(a.diagnostic_markers ?? []).join("; ")}`
+        )
+        .join("\n");
+      const userBlock = [
+        `Dilemma: ${text}`,
+        `Name: ${userPreferredName.trim()}`,
+        `Role: ${userRole.trim()}`,
+        `School/office: ${userSchoolOrOffice.trim()}`,
+        `Context: ${userContext.trim()}`,
+      ].join("\n");
+      const classificationPrompt = `You are classifying a school leader's dilemma into exactly one of the following coaching arcs. Respond with ONLY the arc's exact "name" value (snake_case), or the single word NONE if no arc fits.
+
+ARCS:
+${arcList}
+
+USER'S DILEMMA AND CONTEXT:
+${userBlock}
+
+Reply with only the arc name or NONE.`;
+
+      const genRes = await fetch("/api/chat/ollama/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ollamaUrl: ollamaUrl.trim(),
+          model: selectedModel,
+          prompt: classificationPrompt,
+          stream: false,
+        }),
+      });
+      const genData = await genRes.json().catch(() => ({}));
+      const raw = ((genData.response ?? genData.message ?? "") + "").trim();
+      const firstLine = raw.split(/\n/)[0]?.trim() ?? "";
+      const token = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
+      const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
+      const arc = token === "none" ? "NONE" : validNames.has(token) ? token : (raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR");
+      setArcClassificationResult({ arc, raw: raw.slice(0, 200) });
+    } catch (e) {
+      setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
+    } finally {
+      setLoading(false);
+    }
+  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl]);
 
   const saveSystemMessage = useCallback(() => {
     const msg = systemMessageDraft.trim();
@@ -1148,6 +1208,16 @@ export function ChatView() {
                   <div className="typing-dot" />
                   <div className="typing-dot" />
                   <div className="typing-dot" />
+                </div>
+              </div>
+            )}
+            {arcClassificationResult && (
+              <div className="chat-message assistant">
+                <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
+                  <strong>Selected arc:</strong> {arcClassificationResult.arc}
+                  {arcClassificationResult.raw && arcClassificationResult.arc === "UNKNOWN" && (
+                    <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
+                  )}
                 </div>
               </div>
             )}
@@ -1459,6 +1529,7 @@ export function ChatView() {
                   setShowIntroModal(true);
                   setIntroDraft("");
                   setShowIntroValidation(false);
+                  setArcClassificationResult(null);
                 }}
               >
                 Start new conversation

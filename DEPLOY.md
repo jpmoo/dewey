@@ -131,6 +131,72 @@ module.exports = {
 
 Then: `pm2 start ecosystem.config.cjs`.
 
+**Stop/restart with PM2:**
+
+```bash
+pm2 stop dewey
+pm2 start dewey
+pm2 restart dewey
+```
+
+**With systemd (start on boot, stop/restart with systemctl):**
+
+1. Stop anything on port 3000, then create a user service (runs as your user, no root):
+
+   ```bash
+   kill $(lsof -t -i :3000) 2>/dev/null; sleep 2
+   mkdir -p ~/.config/systemd/user
+   ```
+
+2. Create `~/.config/systemd/user/dewey.service` (adjust paths if your app is not in `~/dewey`):
+
+   ```ini
+   [Unit]
+   Description=Dewey Next.js app
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/home/YOUR_USER/dewey
+   EnvironmentFile=/home/YOUR_USER/dewey/.env.local
+   ExecStartPre=/bin/sh -c 'kill $$(lsof -t -i :3000) 2>/dev/null || true'
+   ExecStartPre=/bin/sleep 2
+   ExecStart=/usr/bin/npm start
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+   `ExecStartPre` frees port 3000 before starting so restarts don’t fail with “address in use”.
+
+   Replace `YOUR_USER` with your username (e.g. `jpmoo`). If Node/npm is not in `/usr/bin`, use `which npm` and put that path in `ExecStart` (e.g. `ExecStart=/usr/bin/npm start` or `ExecStart=/home/jpmoo/.nvm/versions/node/v20.x.x/bin/npm start`).
+
+3. Enable the service so it starts on login/reboot, then start it:
+
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable dewey
+   systemctl --user start dewey
+   ```
+
+4. **Stop / restart:**
+
+   ```bash
+   systemctl --user stop dewey
+   systemctl --user start dewey
+   systemctl --user restart dewey
+   ```
+
+   **Status and logs:**
+
+   ```bash
+   systemctl --user status dewey
+   journalctl --user -u dewey -f
+   ```
+
+   **Note:** User systemd services start after you log in. To have Dewey start at machine boot without a user login, use a system-wide service under `/etc/systemd/system/dewey.service` (same content, but use `User=YOUR_USER` in `[Service]` and run `sudo systemctl enable dewey` / `sudo systemctl start dewey`).
+
 ---
 
 ## 6. Reverse proxy and HTTPS (optional)

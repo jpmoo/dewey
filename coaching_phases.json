@@ -1,0 +1,67 @@
+{
+  "phases": [
+    {
+      "machine_name": "current_state",
+      "display_name": "Current State",
+      "objective": "Help the leader clearly articulate what is happening now, what outcomes they are seeing, and where the gap exists between current and desired results.",
+      "ending_criteria": "The leader can clearly describe the current situation, the gap they are experiencing, and the stakes involved. No new problem framing is being introduced.",
+      "callback_invitation": null
+    },
+    {
+      "machine_name": "root_cause_analysis",
+      "display_name": "Root Cause Analysis",
+      "objective": "Help the leader move beyond surface symptoms to identify the underlying cause driving the problem. Surface and test hypotheses about why the gap exists.",
+      "ending_criteria": "The leader has identified a root cause hypothesis they believe is plausible and are willing to act on. They can distinguish between the root cause and its symptoms.",
+      "callback_invitation": null
+    },
+    {
+      "machine_name": "conditions_for_success",
+      "display_name": "Conditions for Success",
+      "objective": "Help the leader envision what success looks like. Define concrete outcomes, measurable indicators, and non-negotiable conditions that must be in place for the problem to be considered solved.",
+      "ending_criteria": "The leader can describe what success looks like in concrete terms and identify at least one way they would know they had achieved it.",
+      "callback_invitation": null
+    },
+    {
+      "machine_name": "planning",
+      "display_name": "Planning",
+      "objective": "Help the leader design a concrete response to the problem. Identify specific actions, sequence, stakeholders, resources, and timeline.",
+      "ending_criteria": "The leader has a workable action plan with clear next steps they feel confident taking.",
+      "callback_invitation": "Come back once you have started implementing your plan. We can examine early results and determine whether the plan is working or needs adjustment."
+    },
+    {
+      "machine_name": "implementation",
+      "display_name": "Implementation",
+      "objective": "Help the leader think through what is happening as they execute their plan. Surface early signals, obstacles, and unexpected developments.",
+      "ending_criteria": "The leader has enough observational data or experience from implementation to begin evaluating results.",
+      "callback_invitation": "Come back when you have enough results to step back and evaluate what is working and what the data is telling you."
+    },
+    {
+      "machine_name": "interrogate_results",
+      "display_name": "Interrogate Results",
+      "objective": "Help the leader examine what happened after implementation. Determine whether the plan worked, whether root cause assumptions still hold, and what the next move is: declare progress, refine the plan, or revisit root cause.",
+      "ending_criteria": "The leader has made a decision: (1) declare success or sufficient progress, (2) loop back to Planning with a revised approach, or (3) loop back to Root Cause Analysis because underlying assumptions appear flawed.",
+      "callback_invitation": "When you have implemented your next steps and have new results to examine, come back and we will go through this process again."
+    },
+    {
+      "machine_name": "stakeholder_navigation",
+      "display_name": "Stakeholder Navigation",
+      "objective": "Help the leader identify key stakeholders, understand their perspectives and interests, and develop a strategy for communication, influence, or collaboration.",
+      "ending_criteria": "The leader has a clear picture of who needs to be engaged, what each stakeholder needs to hear or experience, and how the leader plans to approach those conversations.",
+      "callback_invitation": "After you have had those conversations, come back and we can debrief on what landed, what surprised you, and what comes next."
+    },
+    {
+      "machine_name": "perspective_taking",
+      "display_name": "Perspective Taking",
+      "objective": "Help the leader step into the perspective of another person involved in a situation — a colleague, a staff member, a family — to understand their experience, motivations, and concerns.",
+      "ending_criteria": "The leader can articulate the other person's perspective with enough empathy and accuracy to inform how they respond or engage.",
+      "callback_invitation": null
+    },
+    {
+      "machine_name": "assumption_interrogation",
+      "display_name": "Assumption Interrogation",
+      "objective": "Help the leader surface and examine the mental models and beliefs underlying their current approach. Identify which assumptions are driving decisions and test whether they still hold.",
+      "ending_criteria": "The leader has identified at least one core assumption, evaluated the evidence for and against it, and decided whether to revise their thinking or proceed with confidence.",
+      "callback_invitation": null
+    }
+  ]
+}

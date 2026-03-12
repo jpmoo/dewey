@@ -1,0 +1,130 @@
+{
+  "arcs": [
+    {
+      "name": "problem_of_practice_fresh",
+      "display_name": "Problem of Practice — Starting Fresh",
+      "description": "The leader has identified a gap or problem but has not yet explored why it is happening or what to do about it. Takes them from problem clarification through root cause to a concrete plan.",
+      "phase_sequence": [
+        "current_state",
+        "root_cause_analysis",
+        "conditions_for_success",
+        "planning"
+      ],
+      "diagnostic_markers": [
+        "I have a problem I need to figure out",
+        "Something is not working and I am not sure why",
+        "Students are struggling with",
+        "We are seeing a gap in",
+        "I have noticed that",
+        "I do not know where to start",
+        "We keep having this issue"
+      ]
+    },
+    {
+      "name": "problem_of_practice_have_root_cause",
+      "display_name": "Problem of Practice — Root Cause Known",
+      "description": "The leader believes they understand why the problem is happening and needs help moving from diagnosis to action.",
+      "phase_sequence": [
+        "conditions_for_success",
+        "planning"
+      ],
+      "diagnostic_markers": [
+        "I know why this is happening",
+        "The root cause is",
+        "We have figured out that",
+        "I understand the problem now",
+        "Now I need to figure out what to do",
+        "I need help planning"
+      ]
+    },
+    {
+      "name": "problem_of_practice_implementing",
+      "display_name": "Problem of Practice — In Implementation",
+      "description": "The leader has a plan in motion and is navigating what is happening as they execute it.",
+      "phase_sequence": [
+        "implementation",
+        "interrogate_results"
+      ],
+      "diagnostic_markers": [
+        "I am in the middle of trying this",
+        "We started the plan and",
+        "I am implementing and running into",
+        "Things are underway but",
+        "I have been trying this approach"
+      ]
+    },
+    {
+      "name": "problem_of_practice_have_results",
+      "display_name": "Problem of Practice — Examining Results",
+      "description": "The leader has implemented something and has results to examine. Needs help interpreting what happened and deciding what comes next.",
+      "phase_sequence": [
+        "interrogate_results"
+      ],
+      "diagnostic_markers": [
+        "We tried it and here is what happened",
+        "I have results to look at",
+        "The data shows",
+        "It worked but",
+        "It did not work and I need to figure out why",
+        "I am not sure what to make of the results"
+      ]
+    },
+    {
+      "name": "change_initiative",
+      "display_name": "Change Initiative",
+      "description": "The leader is planning or managing a change effort that involves moving people. Combines problem framing, stakeholder strategy, and action planning.",
+      "phase_sequence": [
+        "current_state",
+        "conditions_for_success",
+        "stakeholder_navigation",
+        "planning"
+      ],
+      "diagnostic_markers": [
+        "I need to change how we do",
+        "We are rolling out",
+        "I need to get people on board",
+        "There is resistance to",
+        "I am trying to shift the culture",
+        "We are moving to a new approach and people are not sure about it"
+      ]
+    },
+    {
+      "name": "interpersonal_situation",
+      "display_name": "Interpersonal Situation",
+      "description": "The leader is navigating a difficult relationship or personnel situation. Focuses on understanding the other person's perspective and planning a constructive response.",
+      "phase_sequence": [
+        "current_state",
+        "perspective_taking",
+        "planning"
+      ],
+      "diagnostic_markers": [
+        "I am having trouble with a staff member",
+        "There is a conflict between",
+        "A colleague and I are not seeing eye to eye",
+        "I need to have a difficult conversation",
+        "Someone on my team is",
+        "A relationship is strained",
+        "I do not know how to approach this person"
+      ]
+    },
+    {
+      "name": "assumption_revision",
+      "display_name": "Assumption Revision",
+      "description": "The leader senses that their current approach is not working and that the problem may lie in their underlying beliefs or mental models rather than their tactics. Triggered when Interrogate Results routes back to root cause.",
+      "phase_sequence": [
+        "assumption_interrogation",
+        "root_cause_analysis",
+        "conditions_for_success",
+        "planning"
+      ],
+      "diagnostic_markers": [
+        "I keep trying things and nothing works",
+        "Maybe I have been thinking about this wrong",
+        "I am not sure my original assumption was right",
+        "The results are telling me something I did not expect",
+        "I think I need to rethink my approach fundamentally",
+        "What if the problem is not what I thought it was"
+      ]
+    }
+  ]
+}
