@@ -187,7 +187,7 @@ export function ChatView() {
   const [userSchoolOrOffice, setUserSchoolOrOffice] = useState("");
   const [userRole, setUserRole] = useState("");
   const [userContext, setUserContext] = useState("");
-  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string }[]>([]);
   const [citations, setCitations] = useState<{ sourceName: string; url: string; similarity?: number }[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -209,8 +209,6 @@ export function ChatView() {
   const [sessionFinished, setSessionFinished] = useState(false);
   /** When terminal phase completes, show this and FINISHED */
   const [finishedCallbackInvitation, setFinishedCallbackInvitation] = useState<string | null>(null);
-  /** Phase definitions by machine_name for displaying current phase (fetched when in coaching) */
-  const [phasesByMachineName, setPhasesByMachineName] = useState<Record<string, { display_name: string }>>({});
   /** For clarifying-question flow: original dilemma text when classifier returns multiple arcs */
   const [lastDilemmaForClarification, setLastDilemmaForClarification] = useState("");
   const [clarifyingInputValue, setClarifyingInputValue] = useState("");
@@ -472,27 +470,6 @@ export function ChatView() {
     const t = setTimeout(() => fetchRagCollections(), 400);
     return () => clearTimeout(t);
   }, [connected, ragUrl, fetchRagCollections]);
-
-  /** Load phase definitions when in a coaching session so we can show current phase name */
-  useEffect(() => {
-    if (!coachingArc || phaseSequence.length === 0) {
-      setPhasesByMachineName({});
-      return;
-    }
-    let cancelled = false;
-    fetch(pathWithBase("/api/coaching/phases"))
-      .then((r) => (r.ok ? r.json() : Promise.resolve({ phases: [] })))
-      .then((data: { phases?: { machine_name: string; display_name?: string }[] }) => {
-        if (cancelled) return;
-        const map: Record<string, { display_name: string }> = {};
-        for (const p of data.phases ?? []) {
-          if (p.machine_name) map[p.machine_name] = { display_name: p.display_name ?? p.machine_name };
-        }
-        setPhasesByMachineName(map);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [coachingArc, phaseSequence.length]);
 
   const cycleTheme = useCallback(() => {
     const idx = THEME_ORDER.indexOf(theme);
@@ -774,7 +751,7 @@ Return your response as JSON in the following format:
         const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
         const phaseComplete = !!claudeData.phase_complete;
 
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response }]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: coachingArc ?? undefined, phase: displayName }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
         for (const idx of ragSourcesUsed) {
@@ -801,6 +778,7 @@ Return your response as JSON in the following format:
       }
     },
     [
+      coachingArc,
       phaseSequence,
       currentPhaseIndex,
       chatHistory,
@@ -1261,13 +1239,13 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             <button type="button" className="chat-font-btn" onClick={fontUp} aria-label="Increase text size">+</button>
           </div>
           <div className="chat-container" ref={containerRef}>
-            {coachingArc && !sessionFinished && phaseSequence.length > 0 && (
-              <div className="chat-phase-indicator" role="status">
-                Phase: {phasesByMachineName[phaseSequence[currentPhaseIndex]]?.display_name ?? phaseSequence[currentPhaseIndex]}
-              </div>
-            )}
             {chatHistory.map((msg, i) => (
               <div key={i} className={`chat-message ${msg.role}`}>
+                {msg.role === "assistant" && msg.phase && (
+                  <div className="chat-turn-context" role="status">
+                    {msg.phase}
+                  </div>
+                )}
                 <div className="chat-bubble">
                   {msg.role === "assistant" ? (
                     <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />

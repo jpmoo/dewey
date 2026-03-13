@@ -339,16 +339,11 @@
   gap: 12px;
   min-height: 0;
 }
-.dewey-chat .chat-phase-indicator {
+.dewey-chat .chat-turn-context {
   align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary, #475569);
-  background: var(--bg-secondary, #f1f5f9);
-  border: 1px solid var(--border-color, #e2e8f0);
-  margin-bottom: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #64748b);
+  margin-bottom: 2px;
 }
 .dewey-chat .chat-message {
   display: flex;
