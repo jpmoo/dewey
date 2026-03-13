@@ -52,7 +52,11 @@
         "Things are underway but",
         "I have been trying this approach",
         "We had a plan to fix this and we are now doing it",
-        "The intervention is in place and"
+        "The intervention is in place and",
+        "We are implementing a solution for the problem of",
+        "We have a solution in place and",
+        "Not sure how to measure results",
+        "How do we measure whether this is working"
       ]
     },
     {
@@ -74,7 +78,7 @@
     {
       "name": "change_initiative",
       "display_name": "Change Initiative",
-      "description": "The leader is planning or managing a change effort that involves moving people to a new way of doing something. Combines problem framing, stakeholder strategy, action planning, and implementation.",
+      "description": "The leader is planning or managing rollout of a new program, curriculum, or initiative—moving people to a new way of doing something. The focus is on the change effort itself (adoption, buy-in, resistance, support), not on solving a specific student or operational problem or measuring whether a solution worked.",
       "phase_sequence": [
         "current_state",
         "conditions_for_success",
@@ -83,16 +87,14 @@
       ],
       "diagnostic_markers": [
         "I need to change how we do",
-        "We are rolling out",
+        "We are rolling out a new program or curriculum",
         "I need to get people on board",
         "There is resistance to",
         "I am trying to shift the culture",
         "We are moving to a new approach and people are not sure about it",
         "This is a big change and I need to help people understand it",
-        "We are implementing a new program",
-        "Implementing a new curriculum or program",
+        "New program or curriculum rollout",
         "It is a big change for our teachers",
-        "New program or initiative rollout",
         "Introducing a new approach or program and need to support staff"
       ]
     },
