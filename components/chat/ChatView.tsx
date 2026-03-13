@@ -1241,9 +1241,9 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
           <div className="chat-container" ref={containerRef}>
             {chatHistory.map((msg, i) => (
               <div key={i} className={`chat-message ${msg.role}`}>
-                {msg.role === "assistant" && msg.phase && (
+                {msg.role === "assistant" && (msg.arc || msg.phase) && (
                   <div className="chat-turn-context" role="status">
-                    {msg.phase}
+                    {[msg.arc, msg.phase].filter(Boolean).join(" · ")}
                   </div>
                 )}
                 <div className="chat-bubble">
@@ -1285,43 +1285,42 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                 </div>
               </div>
             )}
-            {arcClassificationResult && (
+            {arcClassificationResult && (arcClassificationResult.arcs?.length ?? 0) > 1 && (
               <div className="chat-message assistant">
                 <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
-                  {arcClassificationResult.arcs && arcClassificationResult.arcs.length > 1 ? (
+                  <strong>Possible arcs:</strong> {arcClassificationResult.arcs?.join(", ") ?? ""}
+                  {arcClassificationResult.question && (
                     <>
-                      <strong>Possible arcs:</strong> {arcClassificationResult.arcs.join(", ")}
-                      {arcClassificationResult.question && (
-                        <>
-                          <p style={{ marginTop: 8, marginBottom: 8 }}><strong>Clarifying question:</strong> {arcClassificationResult.question}</p>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            <textarea
-                              className="chat-form-input"
-                              placeholder="Your answer..."
-                              rows={2}
-                              value={clarifyingInputValue}
-                              onChange={(e) => setClarifyingInputValue(e.target.value)}
-                              style={{ resize: "vertical", minHeight: 56 }}
-                            />
-                            <button
-                              type="button"
-                              className="chat-dialog-btn chat-dialog-btn-save"
-                              disabled={loading}
-                              onClick={() => submitClarification()}
-                            >
-                              Submit clarification
-                            </button>
-                          </div>
-                        </>
-                      )}
+                      <p style={{ marginTop: 8, marginBottom: 8 }}><strong>Clarifying question:</strong> {arcClassificationResult.question}</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <textarea
+                          className="chat-form-input"
+                          placeholder="Your answer..."
+                          rows={2}
+                          value={clarifyingInputValue}
+                          onChange={(e) => setClarifyingInputValue(e.target.value)}
+                          style={{ resize: "vertical", minHeight: 56 }}
+                        />
+                        <button
+                          type="button"
+                          className="chat-dialog-btn chat-dialog-btn-save"
+                          disabled={loading}
+                          onClick={() => submitClarification()}
+                        >
+                          Submit clarification
+                        </button>
+                      </div>
                     </>
-                  ) : (
-                    <>
-                      <strong>Selected arc:</strong> {arcClassificationResult.arc}
-                      {arcClassificationResult.raw && (arcClassificationResult.arc.startsWith("UNKNOWN") || arcClassificationResult.arc === "ERROR") && (
-                        <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
-                      )}
-                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {arcClassificationResult && (arcClassificationResult.arc === "ERROR" || arcClassificationResult.arc.startsWith("UNKNOWN")) && (
+              <div className="chat-message assistant">
+                <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
+                  <strong>Error:</strong> {arcClassificationResult.arc}
+                  {arcClassificationResult.raw && (
+                    <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
                   )}
                 </div>
               </div>
