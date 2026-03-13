@@ -155,6 +155,31 @@ function stripChunkLinks(text: string): string {
     .trim();
 }
 
+type NumberedChunk = { num: number; text: string; sourceName: string; url: string };
+
+/** Format RAG chunks for the model: grouped by source, with instruction to reference sources by name. */
+function formatRagContextBySource(chunks: NumberedChunk[]): string {
+  if (chunks.length === 0) return "";
+  const bySource = new Map<string, NumberedChunk[]>();
+  for (const c of chunks) {
+    const key = c.sourceName || "Unknown";
+    if (!bySource.has(key)) bySource.set(key, []);
+    bySource.get(key)!.push(c);
+  }
+  const lines: string[] = [
+    "Relevant context from the knowledge base (grouped by source). You may and should reference these sources by name when relevant (e.g. \"The Strategic Plan notes that...\" or \"According to the district policy...\").",
+    "",
+  ];
+  for (const [sourceName, list] of bySource.entries()) {
+    lines.push(`**Source: ${sourceName}**");
+    for (const c of list) {
+      lines.push(`[${c.num}] ${c.text}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
 const RESERVED_TOKENS = 500;
 
 /** Document/citation base URL: user's app URL (no port) with the port from the RAG server URL, so links work behind proxies. */
@@ -664,7 +689,6 @@ export function ChatView() {
       const endingCriteria = phaseDef.ending_criteria ?? "";
       const callbackInvitation = phaseDef.callback_invitation ?? null;
 
-      type NumberedChunk = { num: number; text: string; sourceName: string; url: string };
       let numberedChunks: NumberedChunk[] = [];
       const selectedRag = ragCollections.length > 0 && ragUrl.trim();
       if (selectedRag) {
@@ -703,6 +727,8 @@ export function ChatView() {
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
+When relevant context from the knowledge base is provided below, you may and should reference it by source name in your response (e.g. "The Strategic Plan notes that..." or "According to the district policy...").
+
 Keep the conversation moving: ask one or two focused questions per turn when possible; avoid belaboring. When the leader has given enough for the phase (they have addressed the objective and the ending criteria below are substantially met), mark phase_complete true and move on — do not require multiple rounds of probing.
 
 You are currently in the following conversation phase:
@@ -732,10 +758,7 @@ Return your response as JSON in the following format:
         userContent += "User context (use when addressing the user):\n" + userContextBlock.join("\n") + "\n\n";
       }
       if (numberedChunks.length > 0) {
-        userContent += "Relevant context (numbered chunks; cite by number in rag_sources_used):\n\n";
-        for (const c of numberedChunks) {
-          userContent += `[${c.num}] ${c.text}\n\n`;
-        }
+        userContent += formatRagContextBySource(numberedChunks) + "\n\n";
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
@@ -800,11 +823,113 @@ Return your response as JSON in the following format:
     ]
   );
 
+  /** Open conversation (no arc/phases): RAG + Claude, no phase_complete. */
+  const runOpenConversationTurn = useCallback(
+    async (userMessage: string) => {
+      let numberedChunks: NumberedChunk[] = [];
+      const selectedRag = ragCollections.length > 0 && ragUrl.trim();
+      if (selectedRag) {
+        const priorAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content?.trim().slice(0, 120);
+        const ragQuery = [userMessage, priorAssistant].filter(Boolean).join(" ");
+        try {
+          const res = await fetch(pathWithBase("/api/chat/rag/query"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ragUrl: ragUrl.trim(),
+              prompt: ragQuery,
+              group: ragCollections,
+              threshold: ragThreshold,
+              limit_chunk_role: true,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          type RagSample = { text?: string; similarity?: number; source_url?: string };
+          type RagDocument = { source_name?: string; source_url?: string; samples?: RagSample[] };
+          const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
+          const flat: { text: string; sourceName: string; url: string }[] = [];
+          for (const doc of Array.isArray(docList) ? docList : []) {
+            const samples = Array.isArray(doc.samples) ? doc.samples : [];
+            for (const s of samples) {
+              const t = (s.text ?? "").trim();
+              if (t) flat.push({ text: t, sourceName: doc.source_name ?? "Unknown", url: doc.source_url ?? s.source_url ?? "#" });
+            }
+          }
+          const topN = flat.slice(0, 10);
+          numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
+        } catch {
+          // continue without RAG
+        }
+      }
+
+      const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
+
+When relevant context from the knowledge base is provided below, you may and should reference it by source name in your response (e.g. "The Strategic Plan notes that..." or "According to the district policy...").
+
+Return your response as JSON in the following format:
+{
+  "response": "your coaching response here",
+  "rag_sources_used": [1, 3]
+}`;
+
+      const transcriptLines = [...chatHistory, { role: "user" as const, content: userMessage }].map(
+        (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`
+      );
+      const transcript = transcriptLines.join("\n\n");
+      const userContextBlock: string[] = [];
+      if (userPreferredName.trim()) userContextBlock.push(`Preferred name: ${userPreferredName.trim()}`);
+      if (userSchoolOrOffice.trim()) userContextBlock.push(`School or office: ${userSchoolOrOffice.trim()}`);
+      if (userRole.trim()) userContextBlock.push(`Role: ${userRole.trim()}`);
+      if (userContext.trim()) userContextBlock.push(`Context about school/office: ${userContext.trim()}`);
+      let userContent = "";
+      if (userContextBlock.length > 0) {
+        userContent += "User context (use when addressing the user):\n" + userContextBlock.join("\n") + "\n\n";
+      }
+      if (numberedChunks.length > 0) {
+        userContent += formatRagContextBySource(numberedChunks) + "\n\n";
+      }
+      userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
+
+      try {
+        const claudeRes = await fetch(pathWithBase("/api/chat/claude/generate"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ system: systemMessage, userContent }),
+        });
+        const claudeData = await claudeRes.json().catch(() => ({}));
+        if (!claudeRes.ok) {
+          setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
+          setLoading(false);
+          return;
+        }
+        const response = (claudeData.response ?? "") as string;
+        const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response }]);
+
+        const citedSources = new Map<string, { sourceName: string; url: string }>();
+        for (const i of ragSourcesUsed) {
+          const c = numberedChunks.find((x) => x.num === i);
+          if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
+        }
+        setCitations(Array.from(citedSources.values()).map((v) => ({ sourceName: v.sourceName, url: v.url })));
+        citationKeysByTurnRef.current.push(new Set(Array.from(citedSources.keys())));
+        everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
+      } catch (e) {
+        setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext]
+  );
+
   const sendMessage = useCallback(async (optionalMessage?: string) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading) return;
 
     const inCoachingMode = coachingArc && !sessionFinished;
+    const inOpenMode = !coachingArc && arcClassificationResult?.arc === "NONE";
+
     if (inCoachingMode) {
       if (!selectedModel || !ollamaUrl.trim()) {
         setLoading(false);
@@ -839,8 +964,37 @@ Return your response as JSON in the following format:
       await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
       return;
     }
-    // No coaching session: send disabled (Ollama fallback removed; only arc classification + compliance use Ollama).
-  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, runCoachingTurn]);
+    if (inOpenMode) {
+      if (!selectedModel?.trim()) return;
+      const historyBlob = chatHistory
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+        .join("\n\n");
+      const screeningContent = (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
+      const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
+      try {
+        const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false }),
+        });
+        const compData = await compRes.json().catch(() => ({}));
+        const raw = ((compData.response ?? "") + "").trim();
+        const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
+        if (isBlock) {
+          setComplianceBlockModal(true);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // allow on error
+      }
+      const userMsg = { role: "user" as const, content: text };
+      setChatHistory((prev) => [...prev, userMsg]);
+      if (optionalMessage == null) setInputValue("");
+      await runOpenConversationTurn(text);
+      return;
+    }
+  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn]);
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
@@ -987,13 +1141,16 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         } catch {
           // arc def or first turn failed; user still sees classification result
         }
+      } else if (arc === "NONE") {
+        setChatHistory((prev) => [...prev, { role: "user", content: text }]);
+        await runOpenConversationTurn(text);
       }
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
       setLoading(false);
     }
-  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl, runCoachingTurn]);
+  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl, runCoachingTurn, runOpenConversationTurn]);
 
   /** Re-run arc classification with enriched dilemma (original + clarification); on single arc start coaching. */
   const submitClarification = useCallback(async () => {
@@ -1099,7 +1256,9 @@ Reply with exactly one key, or NONE.`;
   const fontDown = useCallback(() => setChatFontSize((f) => Math.max(CHAT_FONT_MIN, f - 2)), []);
   const fontUp = useCallback(() => setChatFontSize((f) => Math.min(CHAT_FONT_MAX, f + 2)), []);
 
-  const sendDisabled = sessionFinished || !coachingArc || !selectedModel || !inputValue.trim() || loading;
+  const inCoachingMode = coachingArc && !sessionFinished;
+  const inOpenMode = !coachingArc && arcClassificationResult?.arc === "NONE";
+  const sendDisabled = !(inCoachingMode || inOpenMode) || !selectedModel || !inputValue.trim() || loading;
   const lastMsg = chatHistory[chatHistory.length - 1];
   const showTypingIndicator = loading && !(lastMsg?.role === "assistant" && (lastMsg?.content?.trim() ?? "") !== "");
 
