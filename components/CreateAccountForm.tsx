@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { pathWithBase } from "@/lib/base-path";
 
 export function CreateAccountForm({ onSuccess }: { onSuccess: () => void }) {
   const [username, setUsername] = useState("");
@@ -22,7 +23,7 @@ export function CreateAccountForm({ onSuccess }: { onSuccess: () => void }) {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/register", {
+      const res = await fetch(pathWithBase("/api/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),

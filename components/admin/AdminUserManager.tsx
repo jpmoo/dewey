@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { pathWithBase } from "@/lib/base-path";
 
 type AuthProviderLabel = "Dewey account" | "Google" | "Microsoft" | "Apple";
 
@@ -42,7 +43,7 @@ export function AdminUserManager() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/users");
+      const res = await fetch(pathWithBase("/api/admin/users"));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -64,7 +65,7 @@ export function AdminUserManager() {
 
   const openEdit = useCallback(async (userId: number) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`);
+      const res = await fetch(pathWithBase(`/api/admin/users/${userId}`));
       if (!res.ok) throw new Error("Failed to load user");
       const data = await res.json();
       setEditData(data);
@@ -87,7 +88,7 @@ export function AdminUserManager() {
     }
     let cancelled = false;
     setRagCollectionsLoading(true);
-    fetch(`/api/chat/rag/collections?url=${encodeURIComponent(url)}`)
+    fetch(pathWithBase(`/api/chat/rag/collections?url=${encodeURIComponent(url)}`))
       .then((r) => (r.ok ? r.json() : {}))
       .then((d: { collections?: string[] }) => {
         if (cancelled) return;
@@ -114,7 +115,7 @@ export function AdminUserManager() {
     }
     let cancelled = false;
     setModelOptionsLoading(true);
-    fetch("/api/chat/ollama/tags", {
+    fetch(pathWithBase("/api/chat/ollama/tags"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ollamaUrl: url }),
@@ -155,7 +156,7 @@ export function AdminUserManager() {
     if (editingUserId == null || !editData) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/users/${editingUserId}`, {
+      const res = await fetch(pathWithBase(`/api/admin/users/${editingUserId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editData.settings),
@@ -422,7 +423,7 @@ export function AdminUserManager() {
                 onClick={async () => {
                   setDeleting(true);
                   try {
-                    const res = await fetch(`/api/admin/users/${editingUserId}`, { method: "DELETE" });
+                    const res = await fetch(pathWithBase(`/api/admin/users/${editingUserId}`), { method: "DELETE" });
                     if (!res.ok) {
                       const data = await res.json().catch(() => ({}));
                       throw new Error(data.error || "Failed to delete");

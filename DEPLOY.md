@@ -273,16 +273,15 @@ Ensure `NEXTAUTH_URL` is `https://dewey.example.com` and that OAuth callback URL
    ```
    handle /dewey* {
      reverse_proxy 127.0.0.1:3000 {
-       header_up Host {host}
-       header_up X-Forwarded-Proto {scheme}
-       header_up X-Forwarded-For {remote_host}
+       header_up Host 127.0.0.1:3000
      }
    }
    ```
+   (Do not strip or replace the path — Next.js needs the full `/dewey` prefix when `NEXT_PUBLIC_BASE_PATH=/dewey`.)
 
 2. Set env so the app generates correct URLs and auth callbacks:
    - `NEXT_PUBLIC_BASE_PATH=/dewey`
-   - `NEXTAUTH_URL=https://your-host/dewey` (use the full URL users see, including port if needed, e.g. `https://machine:8083/dewey`)
+   - `NEXTAUTH_URL` = the full URL users see (e.g. `https://home-server.tailce6f0c.ts.net/dewey` for Tailscale, or `https://machine:8083/dewey` if using a port)
 
 3. Rebuild after setting `NEXT_PUBLIC_BASE_PATH`: `npm run build` then restart the app.
 

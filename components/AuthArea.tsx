@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { signIn, getProviders } from "next-auth/react";
+import { pathWithBase, rootPath } from "@/lib/base-path";
 import { FirstUserForm } from "./FirstUserForm";
 import { DeweyLoginForm } from "./DeweyLoginForm";
 
@@ -23,7 +24,7 @@ export function AuthArea() {
       setSetupStatus((prev) => (prev === null ? { hasUsers: false } : prev));
     }, 5000);
 
-    fetch("/api/setup-status")
+    fetch(pathWithBase("/api/setup-status"))
       .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (!cancelled) {
@@ -83,7 +84,7 @@ export function AuthArea() {
             <button
               key={id}
               type="button"
-              onClick={() => signIn(id, { callbackUrl: "/" })}
+              onClick={() => signIn(id, { callbackUrl: rootPath })}
               className="dewey-btn-primary"
             >
               {SSO_LABELS[id] ?? `Continue with ${name}`}

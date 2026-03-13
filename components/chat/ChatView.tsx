@@ -4,6 +4,7 @@ import "@/app/chat/chat.css";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
+import { pathWithBase, rootPath } from "@/lib/base-path";
 import { marked } from "marked";
 import titleImage from "@/assets/title.png";
 
@@ -281,7 +282,7 @@ export function ChatView() {
       return;
     }
     let cancelled = false;
-    fetch("/api/chat/settings")
+    fetch(pathWithBase("/api/chat/settings"))
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -297,7 +298,7 @@ export function ChatView() {
         setUserContext(typeof data.userContext === "string" ? data.userContext : "");
         const ollamaUrlToCheck = typeof data.ollamaUrl === "string" ? data.ollamaUrl.trim() : "";
         if (ollamaUrlToCheck) {
-          fetch("/api/chat/ollama/tags", {
+          fetch(pathWithBase("/api/chat/ollama/tags"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ollamaUrl: ollamaUrlToCheck }),
@@ -381,7 +382,7 @@ export function ChatView() {
     }) => {
       if (sessionStatus !== "authenticated") return;
       try {
-        await fetch("/api/chat/settings", {
+        await fetch(pathWithBase("/api/chat/settings"), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
@@ -446,7 +447,7 @@ export function ChatView() {
       return;
     }
     try {
-      const r = await fetch(`/api/chat/rag/collections?url=${encodeURIComponent(url)}`);
+      const r = await fetch(pathWithBase(`/api/chat/rag/collections?url=${encodeURIComponent(url)}`));
       const d = await r.json().catch(() => ({}));
       if (d.collections && Array.isArray(d.collections)) {
         setRagOptions(d.collections);
@@ -479,7 +480,7 @@ export function ChatView() {
       return;
     }
     let cancelled = false;
-    fetch("/api/coaching/phases")
+    fetch(pathWithBase("/api/coaching/phases"))
       .then((r) => (r.ok ? r.json() : Promise.resolve({ phases: [] })))
       .then((data: { phases?: { machine_name: string; display_name?: string }[] }) => {
         if (cancelled) return;
@@ -500,7 +501,7 @@ export function ChatView() {
   }, [theme]);
 
   const fetchDebugConfig = useCallback(() => {
-    fetch("/api/chat/config")
+    fetch(pathWithBase("/api/chat/config"))
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { debugConsole?: boolean } | null) => {
         const enabled = debugOverride || !!data?.debugConsole;
@@ -531,7 +532,7 @@ export function ChatView() {
       return;
     }
     let cancelled = false;
-    fetch("/api/chat/ollama/show", {
+    fetch(pathWithBase("/api/chat/ollama/show"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ollamaUrl: url, name: model }),
@@ -564,7 +565,7 @@ export function ChatView() {
       return;
     }
     try {
-      const res = await fetch("/api/chat/ollama/tags", {
+      const res = await fetch(pathWithBase("/api/chat/ollama/tags"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ollamaUrl: url }),
@@ -594,7 +595,7 @@ export function ChatView() {
     setConnectionError("");
     setDialogModelConnection(true);
     try {
-      const res = await fetch("/api/chat/ollama/tags", {
+      const res = await fetch(pathWithBase("/api/chat/ollama/tags"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ollamaUrl: url }),
@@ -628,7 +629,7 @@ export function ChatView() {
     setDialogModelConnection(true);
     setConnectionError("");
     try {
-      const res = await fetch("/api/chat/ollama/show", {
+      const res = await fetch(pathWithBase("/api/chat/ollama/show"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ollamaUrl: url, name: model }),
@@ -665,7 +666,7 @@ export function ChatView() {
       type PhaseDef = { machine_name: string; display_name?: string; objective?: string; ending_criteria?: string; callback_invitation?: string | null };
       let phaseDef: PhaseDef | null = null;
       try {
-        const phasesRes = await fetch("/api/coaching/phases");
+        const phasesRes = await fetch(pathWithBase("/api/coaching/phases"));
         if (phasesRes.ok) {
           const data = (await phasesRes.json()) as { phases?: PhaseDef[] };
           phaseDef = (data.phases ?? []).find((p) => p.machine_name === phaseMachineName) ?? null;
@@ -691,7 +692,7 @@ export function ChatView() {
         const priorAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content?.trim().slice(0, 120);
         const ragQuery = [displayName, userMessage, priorAssistant].filter(Boolean).join(" ");
         try {
-          const res = await fetch("/api/chat/rag/query", {
+          const res = await fetch(pathWithBase("/api/chat/rag/query"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -758,7 +759,7 @@ Return your response as JSON in the following format:
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
       try {
-        const claudeRes = await fetch("/api/chat/claude/generate", {
+        const claudeRes = await fetch(pathWithBase("/api/chat/claude/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ system: systemMessage, userContent }),
@@ -830,7 +831,7 @@ Return your response as JSON in the following format:
       const screeningContent = (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
       const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
       try {
-        const compRes = await fetch("/api/chat/ollama/generate", {
+        const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false }),
@@ -881,7 +882,7 @@ Return your response as JSON in the following format:
     }
     setLoading(true);
     try {
-      const arcsRes = await fetch("/api/coaching/arcs");
+      const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
         return;
@@ -916,7 +917,7 @@ ${userBlock}
 
 Reply with one key, or comma-separated keys (and optional QUESTION: line), or NONE.`;
 
-      const genRes = await fetch("/api/chat/ollama/generate", {
+      const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -964,7 +965,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
       if (validSingleArc) {
         try {
-          const defRes = await fetch("/api/coaching/arc-definitions");
+          const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
           if (!defRes.ok) return;
           const defData = (await defRes.json()) as { arcs?: { machine_name: string; phase_sequence: string[] }[] };
           const arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
@@ -997,7 +998,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
     setLoading(true);
     setClarifyingInputValue("");
     try {
-      const arcsRes = await fetch("/api/coaching/arcs");
+      const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
         return;
@@ -1028,7 +1029,7 @@ ${userBlock}
 
 Reply with one key, or comma-separated keys (and optional QUESTION: line), or NONE.`;
 
-      const genRes = await fetch("/api/chat/ollama/generate", {
+      const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: classificationPrompt, stream: false }),
@@ -1070,7 +1071,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
       if (validSingleArc) {
         try {
-          const defRes = await fetch("/api/coaching/arc-definitions");
+          const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
           if (!defRes.ok) return;
           const defData = (await defRes.json()) as { arcs?: { machine_name: string; phase_sequence: string[] }[] };
           const arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
@@ -1166,7 +1167,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                 className={`chat-status-circle ${connected ? "connected" : ""}`}
                 title={connected ? "All systems go!" : `There's a problem: ${connectionError || "Not connected"}.`}
               >
-                <img src="/chat-assets/circle-svgrepo-com.svg" alt="Status" />
+                <img src={pathWithBase("/chat-assets/circle-svgrepo-com.svg")} alt="Status" />
               </div>
             </div>
             {!connected && (
@@ -1191,7 +1192,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
               </span>
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: "/" })}
+                onClick={() => signOut({ callbackUrl: rootPath })}
                 className="chat-panel-signout"
               >
                 Sign out
@@ -1382,12 +1383,12 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       </div>
       <footer className="chat-footer">
         <button type="button" className="chat-footer-btn" onClick={() => setPanelCollapsed((c) => !c)} aria-label="Toggle panel">
-          <img src="/chat-assets/open-panel-filled-left-svgrepo-com.svg" alt="" style={{ transform: panelCollapsed ? "rotate(180deg)" : undefined }} />
+          <img src={pathWithBase("/chat-assets/open-panel-filled-left-svgrepo-com.svg")} alt="" style={{ transform: panelCollapsed ? "rotate(180deg)" : undefined }} />
         </button>
         <div className="chat-footer-input-wrap">
           {connected && (
             <button type="button" className="chat-footer-btn" onClick={() => setDialogCitedDocs(true)} aria-label="Relevant Resources">
-              <img src="/chat-assets/document-svgrepo-com.svg" alt="" />
+              <img src={pathWithBase("/chat-assets/document-svgrepo-com.svg")} alt="" />
             </button>
           )}
           <textarea
@@ -1405,23 +1406,23 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             disabled={sessionFinished}
           />
           <button type="button" className="chat-footer-btn chat-send-btn" disabled={sendDisabled} onClick={() => sendMessage()} title="Send">
-            <img src="/chat-assets/send-alt-1-svgrepo-com.svg" alt="Send" />
+            <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
           </button>
         </div>
         {(session?.user as { is_system_admin?: boolean } | undefined)?.is_system_admin === true && (
           <a
-            href="/admin"
+            href={pathWithBase("/admin")}
             target="_blank"
             rel="noopener noreferrer"
             className="chat-footer-btn chat-footer-btn-admin"
             aria-label="User management"
             title="User management"
           >
-            <img src="/chat-assets/gear-svgrepo-com.svg" alt="" />
+            <img src={pathWithBase("/chat-assets/gear-svgrepo-com.svg")} alt="" />
           </a>
         )}
         <button type="button" className="chat-footer-btn" onClick={cycleTheme} aria-label="Cycle theme">
-          <img src="/chat-assets/contrast-svgrepo-com.svg" alt="" />
+          <img src={pathWithBase("/chat-assets/contrast-svgrepo-com.svg")} alt="" />
         </button>
       </footer>
 
@@ -1522,7 +1523,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                 className="chat-dialog-btn chat-dialog-btn-save"
                 onClick={() => {
                   setDialogIntroSignOutConfirm(false);
-                  signOut({ callbackUrl: "/" });
+                  signOut({ callbackUrl: rootPath });
                 }}
               >
                 Sign out
@@ -1576,7 +1577,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                         <span className={`cited-doc-indicator cited-doc-indicator--${changeState}`} aria-label={indicatorLabel}>
                           {indicatorChar}
                         </span>
-                        <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
+                        <img src={pathWithBase("/chat-assets/document-svgrepo-com.svg")} alt="" className="cited-doc-icon" />
                         <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
                           {entry.sourceName}
                         </a>
@@ -1591,7 +1592,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                   <ul className="cited-docs-list cited-docs-list-dim" aria-label="Previously cited resources">
                     {previouslyCited.map((entry) => (
                       <li key={entry.key}>
-                        <img src="/chat-assets/document-svgrepo-com.svg" alt="" className="cited-doc-icon" />
+                        <img src={pathWithBase("/chat-assets/document-svgrepo-com.svg")} alt="" className="cited-doc-icon" />
                         <a href={resolveCitationUrl(getDocumentBaseUrl(ragUrl.trim()), entry.url)} target="_blank" rel="noopener noreferrer" className="cited-doc-link">
                           {entry.sourceName}
                         </a>

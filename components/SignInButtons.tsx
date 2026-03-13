@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { signIn, getProviders } from "next-auth/react";
+import { rootPath } from "@/lib/base-path";
 
 const LABELS: Record<string, string> = {
   apple: "Continue with Apple",
@@ -70,7 +71,7 @@ export function SignInButtons() {
         <button
           key={id}
           type="button"
-          onClick={() => signIn(id, { callbackUrl: "/" })}
+          onClick={() => signIn(id, { callbackUrl: rootPath })}
           className="dewey-btn-primary"
         >
           {LABELS[id] ?? `Continue with ${name}`}

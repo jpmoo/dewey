@@ -2,6 +2,7 @@
 
 import { signOut } from "next-auth/react";
 import type { Session } from "next-auth";
+import { rootPath } from "@/lib/base-path";
 
 export function SignedInHeader({ user }: { user: Session["user"] }) {
   return (
@@ -11,7 +12,7 @@ export function SignedInHeader({ user }: { user: Session["user"] }) {
       </span>
       <button
         type="button"
-        onClick={() => signOut({ callbackUrl: "/" })}
+        onClick={() => signOut({ callbackUrl: rootPath })}
         className="text-xs font-medium text-dewey-mute hover:text-dewey-ink transition-colors"
       >
         Sign out

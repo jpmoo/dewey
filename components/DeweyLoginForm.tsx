@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { rootPath } from "@/lib/base-path";
 
 export function DeweyLoginForm() {
   const [username, setUsername] = useState("");
@@ -17,7 +18,7 @@ export function DeweyLoginForm() {
       const result = await signIn("dewey", {
         username: username.trim(),
         password,
-        callbackUrl: "/",
+        callbackUrl: rootPath,
         redirect: false,
       });
       if (result?.error) {

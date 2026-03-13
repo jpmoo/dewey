@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { pathWithBase, rootPath } from "@/lib/base-path";
 
 export function FirstUserForm() {
   const [username, setUsername] = useState("");
@@ -23,7 +24,7 @@ export function FirstUserForm() {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/setup", {
+      const res = await fetch(pathWithBase("/api/setup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
@@ -36,7 +37,7 @@ export function FirstUserForm() {
       const result = await signIn("dewey", {
         username: username.trim(),
         password,
-        callbackUrl: "/",
+        callbackUrl: rootPath,
         redirect: false,
       });
       if (result?.error) {

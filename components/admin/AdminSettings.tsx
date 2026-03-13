@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { pathWithBase } from "@/lib/base-path";
 
 type EnvEntry = { key: string; value: string; obscured: boolean; label?: string };
 
@@ -23,7 +24,7 @@ export function AdminSettings() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/settings");
+      const res = await fetch(pathWithBase("/api/admin/settings"));
       if (!res.ok) throw new Error("Failed to load settings");
       const data = await res.json();
       setEnv(data.env ?? []);
@@ -59,7 +60,7 @@ export function AdminSettings() {
     try {
       const envToSave = { ...draft, DEWEY_DEBUG_CONSOLE: debugConsole ? "true" : "false" };
       const applyToAllUsers = APPLY_TO_ALL_KEYS.filter((k) => applyToAll[k]);
-      const res = await fetch("/api/admin/settings", {
+      const res = await fetch(pathWithBase("/api/admin/settings"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ env: envToSave, debugConsole, applyToAllUsers }),
