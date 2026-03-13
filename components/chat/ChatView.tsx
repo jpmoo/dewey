@@ -629,9 +629,9 @@ export function ChatView() {
   }, [ollamaUrl, ragUrl]);
 
   /** Run one coaching turn: RAG by phase + user message, build Claude prompt, call Claude, display and handle phase_complete (spec Steps 3–8).
-   * Optional phaseSeq/phaseIdx allow the first turn to run immediately after setState (avoids stale empty state). */
+   * Optional phaseSeq/phaseIdx/arcOverride allow the first turn to run immediately after setState (avoids stale state). */
   const runCoachingTurn = useCallback(
-    async (userMessage: string, phaseSeq?: string[], phaseIdx?: number) => {
+    async (userMessage: string, phaseSeq?: string[], phaseIdx?: number, arcOverride?: string) => {
       const seq = phaseSeq ?? phaseSequence;
       const idx = typeof phaseIdx === "number" ? phaseIdx : currentPhaseIndex;
       const phaseMachineName = seq[idx];
@@ -751,7 +751,8 @@ Return your response as JSON in the following format:
         const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
         const phaseComplete = !!claudeData.phase_complete;
 
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: coachingArc ?? undefined, phase: displayName }]);
+        const arcForMessage = arcOverride ?? coachingArc ?? undefined;
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcForMessage, phase: displayName }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
         for (const idx of ragSourcesUsed) {
@@ -958,7 +959,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
             setChatHistory((prev) => [...prev, { role: "user", content: text }]);
-            await runCoachingTurn(text, arcDef.phase_sequence, 0);
+            await runCoachingTurn(text, arcDef.phase_sequence, 0, arc);
           }
         } catch {
           // arc def or first turn failed; user still sees classification result
@@ -1068,7 +1069,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
             setChatHistory((prev) => [...prev, { role: "user", content: enrichedDilemma }]);
-            await runCoachingTurn(enrichedDilemma, arcDef.phase_sequence, 0);
+            await runCoachingTurn(enrichedDilemma, arcDef.phase_sequence, 0, arc);
           }
         } catch {
           // continue

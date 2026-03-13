@@ -1,135 +1,220 @@
-# Mock coaching queries (with turn/conversation labels)
+# Mock prompts sent to models
 
-Rundown of sample flows with turn- and conversation-specific info labeled in brackets. Use these to reason about arc/phase behavior and to test or demo the coaching engine.
-
----
-
-## Example 1: Change Initiative (full arc)
-
-**[arc]** `change_initiative`  
-**[phase_sequence]** current_state → conditions_for_success → stakeholder_navigation → planning
+This doc shows the **actual prompts** the app sends to Ollama and Claude. Variable or turn-specific parts are labeled in `[brackets]` so you can see what is substituted at runtime.
 
 ---
 
-### Turn 1
+## 1. Arc classification (Ollama) — intro
 
-**[phase]** Current State  
-**[user]**  
-I'm interested in helping principals facilitate better collaboration between their teachers. We're rolling out a new PLC structure and there's a lot of confusion about what it's supposed to look like.
+**When:** User submits the intro (first message).  
+**API:** `POST /api/chat/ollama/generate`  
+**Body:** `{ ollamaUrl, model, prompt, stream: false }`
 
-**[assistant]**  
-[Coaching response clarifying current state: what’s happening now, what “confusion” looks like, gap between current and desired.]
+**Prompt template:**
 
-**[phase_complete]** false → stay in Current State (or true → advance)
+```
+You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
 
----
+- If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
+- If two or more arcs could fit and you're unsure, respond with those keys separated by commas (e.g. change_initiative, problem_of_practice_implementing). You MUST then add a new line starting with QUESTION: and a short clarifying question to help the user choose (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?).
+- If no arc fits, respond with NONE.
 
-### Turn 2
+ARCS:
+[arcList — one block per arc from /api/coaching/arcs:]
+- Description: [description]
+  Diagnostic markers: [diagnostic_markers joined with "; "]
+  Reply with this key if this arc fits: [name]
 
-**[phase]** Current State (if not complete) or Conditions for Success  
-**[user]**  
-Right now teachers are still planning in isolation. A few have started sharing in their PLCs but most say they don’t know what “good” looks like or how much time they’re supposed to spend.
+USER'S DILEMMA AND CONTEXT:
+Dilemma: [user intro text]
+Name: [userPreferredName]
+Role: [userRole]
+School/office: [userSchoolOrOffice]
+Context: [userContext]
 
-**[assistant]**  
-[Response continues current state or moves to conditions for success: what would “good” look like? How would you know collaboration was working?]
+Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.
+```
 
-**[phase_complete]** true → advance to Conditions for Success
+**Example (abbreviated ARCS):**
 
----
+```
+You are classifying a school leader's dilemma into one or more of the following coaching arcs. ...
 
-### Turn 3
+ARCS:
+- Description: The leader has identified a gap or problem but has not yet explored why...
+  Diagnostic markers: I have a problem I need to figure out; Something is not working...
+  Reply with this key if this arc fits: problem_of_practice_fresh
+- Description: The leader is planning or managing rollout of a new program...
+  Diagnostic markers: I need to change how we do; We are rolling out a new program...
+  Reply with this key if this arc fits: change_initiative
+...
 
-**[phase]** Conditions for Success  
-**[user]**  
-I’d know we were there when PLCs have a shared agenda, bring student work to the table at least once a month, and principals can name what they’re seeing in the meetings.
+USER'S DILEMMA AND CONTEXT:
+Dilemma: I want to help principals facilitate deeper teacher collaboration. We're rolling out a new PLC structure and there's confusion about what it should look like.
+Name: Jeff
+Role: Assistant Superintendent
+School/office: [user's school]
+Context: [user's context]
 
-**[assistant]**  
-[Response sharpens conditions: concrete outcomes, non‑negotiables, one way they’d know they’d achieved it.]
+Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.
+```
 
-**[phase_complete]** true → advance to Stakeholder Navigation
-
----
-
-### Turn 4
-
-**[phase]** Stakeholder Navigation  
-**[user]**  
-The main stakeholders are the principals, the lead teachers in each building, and the curriculum team. Some principals are on board; others think it’s another initiative that will go away.
-
-**[assistant]**  
-[Response explores who needs to be engaged, what each group needs to hear or experience, and how the leader will approach those conversations.]
-
-**[phase_complete]** true → advance to Planning
-
----
-
-### Turn 5
-
-**[phase]** Planning  
-**[user]**  
-I’m thinking we start with principal 1:1s to get commitment, then a pilot in two buildings before we roll out the expectations and protocols to everyone.
-
-**[assistant]**  
-[Response helps design the plan: actions, sequence, stakeholders, resources, timeline. Ends with callback invitation to return once they’ve started implementing.]
-
-**[phase_complete]** true → terminal phase; session can end with **[callback_invitation]** (e.g. “Come back once you have started implementing your plan…”)
+**Expected response format:** One line with a single key (e.g. `change_initiative`) or comma-separated keys, optionally followed by a line `QUESTION: <clarifying question>`.
 
 ---
 
-## Example 2: Problem of Practice — starting fresh (intro + one phase)
+## 2. Clarification re-run (Ollama)
 
-**[arc]** `problem_of_practice_fresh`  
-**[phase_sequence]** current_state → root_cause_analysis → conditions_for_success → planning
-
----
-
-### Turn 1
-
-**[phase]** Current State  
-**[user]**  
-I have a problem I need to figure out. Our middle school math scores have been flat for three years and we’re not sure where to start.
-
-**[assistant]**  
-[Response focuses on current state: what “flat” looks like, what’s been tried, where the gap is between current and desired.]
-
-**[phase_complete]** false or true
+**When:** User submits a clarification after multiple arcs were returned.  
+**API:** Same as above.  
+**Difference:** The dilemma block uses the **enriched** text: `[lastDilemmaForClarification]\n\nClarification: [clarifyingInputValue]`. The instruction text is the same; the prompt asks for "one key, or comma-separated keys plus a QUESTION: line".
 
 ---
 
-### Turn 2 (if phase complete)
+## 3. Compliance screening (Ollama) — before each coaching message
 
-**[phase]** Root Cause Analysis  
-**[user]**  
-We’ve done curriculum alignment and added tutoring, but we haven’t really looked at whether instruction is consistent across teachers or how we’re using data.
+**When:** Before every user message in an active coaching session (after arc is chosen).  
+**API:** `POST /api/chat/ollama/generate`  
+**Body:** `{ ollamaUrl, model, prompt, stream: false }`
 
-**[assistant]**  
-[Response surfaces hypotheses about why the gap exists and tests them; moves toward a root cause the leader is willing to act on.]
+**Prompt:**
+
+```
+You are a compliance screening layer for a public K–12 educational leadership AI system operating in New Jersey.
+
+Your task is to review the full conversation (including history) and determine whether the user is requesting or discussing content that may involve:
+1. Specific identifiable student information ...
+2. Specific identifiable personnel matters ...
+...
+Only flag if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
+
+Output format:
+Return ONLY one of the following:
+ALLOW
+or
+BLOCK
+
+--- Conversation to review ---
+
+[Conversation so far as:]
+User: [message 1]
+Assistant: [message 2]
+User: [message 3]
+...
+User: [current user message]
+```
+
+**Expected response:** Exactly `ALLOW` or `BLOCK`. If `BLOCK`, the app shows a compliance modal and does not send the message to Claude.
 
 ---
 
-## Example 3: Clarification (multiple arcs)
+## 4. RAG query (optional) — per coaching turn
 
-**[classification]** Classifier returns more than one arc; user is asked to clarify.
+**When:** At the start of each coaching turn, if RAG is configured (ragUrl + ragCollections).  
+**API:** `POST /api/chat/rag/query`  
+**Body:** `{ ragUrl, prompt, group: ragCollections, threshold, limit_chunk_role: true }`
 
-**[arcs_returned]** e.g. `change_initiative`, `problem_of_practice_fresh`  
-**[clarifying_question]** e.g. “Is this mainly about rolling out a new way of working (change initiative), or about solving a specific student-outcome or operational problem (problem of practice)?”
+**Prompt sent as `prompt`:**  
+`[phase display name] [current user message] [last assistant message trimmed to 120 chars]`  
+e.g. `Current State I want to help principals facilitate deeper collaboration. We're rolling out a new PLC structure...`
 
-**[user]**  
-It’s more about the rollout—getting people to actually use the new structure.
+Returned chunks are numbered and injected into the Claude user content (see below).
 
-**[arc]** Resolved to `change_initiative`; conversation continues with **[phase]** Current State (or first phase in that arc’s sequence).
+---
+
+## 5. Coaching turn (Claude) — system + user
+
+**When:** Each coaching turn (after compliance allows, RAG run if configured).  
+**API:** `POST /api/chat/claude/generate`  
+**Body:** `{ system: systemMessage, userContent }`
+
+### System message template
+
+```
+You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
+
+You are currently in the following conversation phase:
+Phase: [displayName — e.g. Current State]
+Objective: [objective — from phase definition]
+This phase is complete when: [endingCriteria — from phase definition]
+
+Return your response as JSON in the following format:
+{
+  "response": "your coaching response here",
+  "rag_sources_used": [1, 3],
+  "phase_complete": true or false,
+  "phase_complete_reasoning": "brief explanation"
+}
+```
+
+### User content template
+
+```
+[If user context fields set:]
+User context (use when addressing the user):
+Preferred name: [userPreferredName]
+School or office: [userSchoolOrOffice]
+Role: [userRole]
+Context about school/office: [userContext]
+
+[If RAG returned chunks:]
+Relevant context (numbered chunks; cite by number in rag_sources_used):
+
+[1] [chunk text]
+[2] [chunk text]
+...
+
+Conversation so far:
+
+User: [first user message]
+Assistant: [first assistant message]
+User: [second user message]
+...
+
+Current user message:
+
+[current user message]
+```
+
+**Example (first turn, no RAG):**
+
+System:
+```
+You are an executive coach for educational leaders. ...
+Phase: Current State
+Objective: Help the leader clearly articulate what is happening now, what outcomes they are seeing, and where the gap exists between current and desired results.
+This phase is complete when: The leader can clearly describe the current situation, the gap they are experiencing, and the stakes involved. ...
+Return your response as JSON ...
+```
+
+User content:
+```
+User context (use when addressing the user):
+Preferred name: Jeff
+School or office: Example District
+Role: Assistant Superintendent
+Context about school/office: Five schools; piloting new PLC structure.
+
+Conversation so far:
+
+(none)
+
+Current user message:
+
+I want to help principals facilitate deeper teacher collaboration. We're rolling out a new PLC structure and there's a lot of confusion about what it's supposed to look like.
+```
+
+**Expected response (JSON):** `response`, `rag_sources_used` (array of chunk numbers), `phase_complete` (boolean), `phase_complete_reasoning` (string). The app displays `response` and, if `phase_complete` is true, advances to the next phase or ends the session.
 
 ---
 
 ## Label reference
 
-| Label | Meaning |
-|-------|--------|
-| **[arc]** | Coaching arc (e.g. `change_initiative`, `problem_of_practice_fresh`). |
-| **[phase]** | Current phase display name for this turn (e.g. Current State, Root Cause Analysis). |
-| **[phase_sequence]** | Ordered list of phases for the arc (machine names or display names). |
-| **[phase_complete]** | Whether the model marked the phase complete this turn; if true, advance to next phase or end. |
-| **[callback_invitation]** | Optional text shown when the terminal phase completes (invitation to return later). |
-| **[user]** | User message (dilemma or reply). |
-| **[assistant]** | Model coaching response. |
-| **[classification]** / **[arcs_returned]** / **[clarifying_question]** | Intro flow: classifier output and optional clarification before an arc is chosen. |
+| [Bracket] | Meaning |
+|-----------|--------|
+| `[arcList]` | One line per arc: description, diagnostic_markers, reply key (from `/api/coaching/arcs`). |
+| `[user intro text]` / `[current user message]` | Raw user message. |
+| `[userPreferredName]`, `[userRole]`, etc. | From chat settings / "About you". |
+| `[displayName]`, `[objective]`, `[endingCriteria]` | From current phase (e.g. `/api/coaching/phases`). |
+| `[Conversation so far]` | Full transcript of the session so far (User: / Assistant: lines). |
+| `[last assistant message]` | Used in RAG query and in transcript. |
