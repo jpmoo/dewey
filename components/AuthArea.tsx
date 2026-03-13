@@ -12,7 +12,7 @@ const SSO_LABELS: Record<string, string> = {
 };
 
 export function AuthArea() {
-  const [setupStatus, setSetupStatus] = useState<{ hasUsers: boolean } | null>(null);
+  const [setupStatus, setSetupStatus] = useState<{ hasUsers: boolean; error?: string } | null>(null);
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([]);
   const [deweyExpanded, setDeweyExpanded] = useState(false);
 
@@ -24,12 +24,18 @@ export function AuthArea() {
     }, 5000);
 
     fetch("/api/setup-status")
-      .then((r) => (r.ok ? r.json() : { hasUsers: false }))
-      .then((data) => {
-        if (!cancelled) setSetupStatus(data ?? { hasUsers: false });
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!cancelled) {
+          const payload = data ?? {};
+          setSetupStatus({
+            hasUsers: ok ? !!payload.hasUsers : false,
+            error: payload.error,
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled) setSetupStatus({ hasUsers: false });
+        if (!cancelled) setSetupStatus({ hasUsers: false, error: "Could not reach server" });
       })
       .finally(() => clearTimeout(timeout));
 
@@ -57,6 +63,13 @@ export function AuthArea() {
   }
 
   if (!setupStatus.hasUsers) {
+    if (setupStatus.error) {
+      return (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {setupStatus.error}. Check that the database is running and DATABASE_URL is set.
+        </div>
+      );
+    }
     return <FirstUserForm />;
   }
 

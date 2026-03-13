@@ -208,6 +208,8 @@ export function ChatView() {
   const [sessionFinished, setSessionFinished] = useState(false);
   /** When terminal phase completes, show this and FINISHED */
   const [finishedCallbackInvitation, setFinishedCallbackInvitation] = useState<string | null>(null);
+  /** Phase definitions by machine_name for displaying current phase (fetched when in coaching) */
+  const [phasesByMachineName, setPhasesByMachineName] = useState<Record<string, { display_name: string }>>({});
   /** For clarifying-question flow: original dilemma text when classifier returns multiple arcs */
   const [lastDilemmaForClarification, setLastDilemmaForClarification] = useState("");
   const [clarifyingInputValue, setClarifyingInputValue] = useState("");
@@ -470,6 +472,27 @@ export function ChatView() {
     return () => clearTimeout(t);
   }, [connected, ragUrl, fetchRagCollections]);
 
+  /** Load phase definitions when in a coaching session so we can show current phase name */
+  useEffect(() => {
+    if (!coachingArc || phaseSequence.length === 0) {
+      setPhasesByMachineName({});
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/coaching/phases")
+      .then((r) => (r.ok ? r.json() : Promise.resolve({ phases: [] })))
+      .then((data: { phases?: { machine_name: string; display_name?: string }[] }) => {
+        if (cancelled) return;
+        const map: Record<string, { display_name: string }> = {};
+        for (const p of data.phases ?? []) {
+          if (p.machine_name) map[p.machine_name] = { display_name: p.display_name ?? p.machine_name };
+        }
+        setPhasesByMachineName(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [coachingArc, phaseSequence.length]);
+
   const cycleTheme = useCallback(() => {
     const idx = THEME_ORDER.indexOf(theme);
     const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
@@ -627,10 +650,13 @@ export function ChatView() {
     }
   }, [ollamaUrl, ragUrl]);
 
-  /** Run one coaching turn: RAG by phase + user message, build Claude prompt, call Claude, display and handle phase_complete (spec Steps 3–8). */
+  /** Run one coaching turn: RAG by phase + user message, build Claude prompt, call Claude, display and handle phase_complete (spec Steps 3–8).
+   * Optional phaseSeq/phaseIdx allow the first turn to run immediately after setState (avoids stale empty state). */
   const runCoachingTurn = useCallback(
-    async (userMessage: string) => {
-      const phaseMachineName = phaseSequence[currentPhaseIndex];
+    async (userMessage: string, phaseSeq?: string[], phaseIdx?: number) => {
+      const seq = phaseSeq ?? phaseSequence;
+      const idx = typeof phaseIdx === "number" ? phaseIdx : currentPhaseIndex;
+      const phaseMachineName = seq[idx];
       if (!phaseMachineName) {
         setChatHistory((prev) => [...prev, { role: "assistant", content: "Error: No phase set for this arc." }]);
         setLoading(false);
@@ -759,7 +785,7 @@ Return your response as JSON in the following format:
         everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
 
         if (phaseComplete) {
-          const hasNext = currentPhaseIndex + 1 < phaseSequence.length;
+          const hasNext = idx + 1 < seq.length;
           if (hasNext) {
             setCurrentPhaseIndex((i) => i + 1);
           } else {
@@ -949,7 +975,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
             setChatHistory((prev) => [...prev, { role: "user", content: text }]);
-            await runCoachingTurn(text);
+            await runCoachingTurn(text, arcDef.phase_sequence, 0);
           }
         } catch {
           // arc def or first turn failed; user still sees classification result
@@ -1055,7 +1081,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
             setChatHistory((prev) => [...prev, { role: "user", content: enrichedDilemma }]);
-            await runCoachingTurn(enrichedDilemma);
+            await runCoachingTurn(enrichedDilemma, arcDef.phase_sequence, 0);
           }
         } catch {
           // continue
@@ -1234,6 +1260,11 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             <button type="button" className="chat-font-btn" onClick={fontUp} aria-label="Increase text size">+</button>
           </div>
           <div className="chat-container" ref={containerRef}>
+            {coachingArc && !sessionFinished && phaseSequence.length > 0 && (
+              <div className="chat-phase-indicator" role="status">
+                Phase: {phasesByMachineName[phaseSequence[currentPhaseIndex]]?.display_name ?? phaseSequence[currentPhaseIndex]}
+              </div>
+            )}
             {chatHistory.map((msg, i) => (
               <div key={i} className={`chat-message ${msg.role}`}>
                 <div className="chat-bubble">
