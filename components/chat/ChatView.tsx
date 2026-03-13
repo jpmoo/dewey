@@ -884,7 +884,7 @@ Return your response as JSON in the following format:
       const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
 
 - If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
-- If two or more arcs could fit and you're unsure, respond with those keys separated by commas (e.g. change_initiative, problem_of_practice_implementing). On the next line, you may add QUESTION: followed by a short clarifying question to help narrow it down (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?).
+- If two or more arcs could fit and you're unsure, respond with those keys separated by commas (e.g. change_initiative, problem_of_practice_implementing). You MUST then add a new line starting with QUESTION: and a short clarifying question to help the user choose (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?).
 - If no arc fits, respond with NONE.
 
 ARCS:
@@ -893,7 +893,7 @@ ${arcList}
 USER'S DILEMMA AND CONTEXT:
 ${userBlock}
 
-Reply with one key, or comma-separated keys (and optional QUESTION: line), or NONE.`;
+Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.`;
 
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -914,7 +914,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean);
       const firstLine = lines[0] ?? "";
       const questionLine = lines.find((l) => /^question:\s*/i.test(l));
-      const question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
+      let question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
@@ -936,6 +936,10 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
+      }
+      if (selectedArcs && selectedArcs.length > 1 && !question) {
+        const displayNames = selectedArcs.map((k) => arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ")).filter(Boolean);
+        question = displayNames.length >= 2 ? `Which best describes your situation: ${displayNames.join(" or ")}?` : undefined;
       }
       setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(text);
@@ -996,7 +1000,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
 
 - If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
-- If two or more arcs could fit and you're unsure, respond with those keys separated by commas. On the next line, you may add QUESTION: followed by a short clarifying question.
+- If two or more arcs could fit and you're unsure, respond with those keys separated by commas. You MUST add a new line starting with QUESTION: and a short clarifying question.
 - If no arc fits, respond with NONE.
 
 ARCS:
@@ -1005,7 +1009,7 @@ ${arcList}
 USER'S DILEMMA AND CONTEXT:
 ${userBlock}
 
-Reply with one key, or comma-separated keys (and optional QUESTION: line), or NONE.`;
+Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.`;
 
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1021,7 +1025,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean);
       const firstLine = lines[0] ?? "";
       const questionLine = lines.find((l) => /^question:\s*/i.test(l));
-      const question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
+      let question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
@@ -1042,6 +1046,10 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
+      }
+      if (selectedArcs && selectedArcs.length > 1 && !question) {
+        const displayNames = selectedArcs.map((k) => arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ")).filter(Boolean);
+        question = displayNames.length >= 2 ? `Which best describes your situation: ${displayNames.join(" or ")}?` : undefined;
       }
       setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(enrichedDilemma);
@@ -1287,11 +1295,10 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
             )}
             {arcClassificationResult && (arcClassificationResult.arcs?.length ?? 0) > 1 && (
               <div className="chat-message assistant">
-                <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
-                  <strong>Possible arcs:</strong> {arcClassificationResult.arcs?.join(", ") ?? ""}
-                  {arcClassificationResult.question && (
+                <div className="chat-bubble">
+                  {arcClassificationResult.question ? (
                     <>
-                      <p style={{ marginTop: 8, marginBottom: 8 }}><strong>Clarifying question:</strong> {arcClassificationResult.question}</p>
+                      <p style={{ marginBottom: 8 }}>{arcClassificationResult.question}</p>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         <textarea
                           className="chat-form-input"
@@ -1311,13 +1318,15 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                         </button>
                       </div>
                     </>
+                  ) : (
+                    <p style={{ marginBottom: 0 }}>Which best describes your situation? Add a note below and submit.</p>
                   )}
                 </div>
               </div>
             )}
             {arcClassificationResult && (arcClassificationResult.arc === "ERROR" || arcClassificationResult.arc.startsWith("UNKNOWN")) && (
               <div className="chat-message assistant">
-                <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
+                <div className="chat-bubble">
                   <strong>Error:</strong> {arcClassificationResult.arc}
                   {arcClassificationResult.raw && (
                     <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
