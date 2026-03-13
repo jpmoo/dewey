@@ -40,7 +40,7 @@
     {
       "name": "problem_of_practice_implementing",
       "display_name": "Problem of Practice — In Implementation",
-      "description": "The leader already had a plan to fix a specific problem of practice and is now in the middle of executing it—navigating obstacles or unexpected results. Not for rolling out a new program or initiative (use Change Initiative for that).",
+      "description": "The leader already had a plan to fix a specific problem of practice and is now executing that plan—navigating obstacles or unexpected results as they run it. This is about a fix or intervention already in motion, not about rolling out a new program or curriculum.",
       "phase_sequence": [
         "implementation",
         "interrogate_results"
@@ -48,10 +48,11 @@
       "diagnostic_markers": [
         "I am in the middle of trying this",
         "We started the plan and",
-        "I am implementing and running into",
+        "We are executing the plan and running into",
         "Things are underway but",
         "I have been trying this approach",
-        "We had a plan to fix this and we are now doing it"
+        "We had a plan to fix this and we are now doing it",
+        "The intervention is in place and"
       ]
     },
     {

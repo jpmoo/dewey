@@ -941,10 +941,11 @@ export function ChatView() {
       }
       const arcsData = (await arcsRes.json()) as { arcs?: { name: string; display_name?: string; description?: string; diagnostic_markers?: string[] }[] };
       const arcs = Array.isArray(arcsData.arcs) ? arcsData.arcs : [];
+      // Describe each arc without including its name/display_name, so the model matches on content only; then give the reply key separately
       const arcList = arcs
         .map(
           (a) =>
-            `- name: ${a.name}\n  description: ${a.description ?? ""}\n  diagnostic_markers: ${(a.diagnostic_markers ?? []).join("; ")}`
+            `- Description: ${a.description ?? ""}\n  Diagnostic markers: ${(a.diagnostic_markers ?? []).join("; ")}\n  Reply with this key if this arc fits: ${a.name}`
         )
         .join("\n");
       const userBlock = [
@@ -954,7 +955,7 @@ export function ChatView() {
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma into exactly one of the following coaching arcs. Respond with ONLY the arc's exact "name" value (snake_case), or the single word NONE if no arc fits.
+      const classificationPrompt = `You are classifying a school leader's dilemma into exactly one of the following coaching arcs. Match the dilemma to the best-fitting arc using only the description and diagnostic markers. Respond with ONLY that arc's reply key (the exact snake_case value shown), or the single word NONE if no arc fits.
 
 ARCS:
 ${arcList}
@@ -962,7 +963,7 @@ ${arcList}
 USER'S DILEMMA AND CONTEXT:
 ${userBlock}
 
-Reply with only the arc name or NONE.`;
+Reply with only the reply key or NONE.`;
 
       const genRes = await fetch("/api/chat/ollama/generate", {
         method: "POST",
