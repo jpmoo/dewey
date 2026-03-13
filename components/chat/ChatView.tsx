@@ -829,11 +829,11 @@ Return your response as JSON in the following format:
       const userMsg = { role: "user" as const, content: text };
       setChatHistory((prev) => [...prev, userMsg]);
       if (optionalMessage == null) setInputValue("");
-      await runCoachingTurn(text);
+      await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
       return;
     }
     // No coaching session: send disabled (Ollama fallback removed; only arc classification + compliance use Ollama).
-  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, runCoachingTurn]);
+  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, runCoachingTurn]);
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
