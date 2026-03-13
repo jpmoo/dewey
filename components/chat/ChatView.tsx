@@ -195,7 +195,7 @@ export function ChatView() {
   const [introDraft, setIntroDraft] = useState("");
   const [showIntroValidation, setShowIntroValidation] = useState(false);
   const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
-  const [arcClassificationResult, setArcClassificationResult] = useState<{ arc: string; raw?: string } | null>(null);
+  const [arcClassificationResult, setArcClassificationResult] = useState<{ arc: string; arcs?: string[]; question?: string; raw?: string } | null>(null);
   const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
   const [systemMessageDraft, setSystemMessageDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -955,7 +955,11 @@ export function ChatView() {
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma into exactly one of the following coaching arcs. Match the dilemma to the best-fitting arc using only the description and diagnostic markers. Respond with ONLY that arc's reply key (the exact snake_case value shown), or the single word NONE if no arc fits.
+      const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
+
+- If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
+- If two or more arcs could fit and you're unsure, respond with those keys separated by commas (e.g. change_initiative, problem_of_practice_implementing). On the next line, you may add QUESTION: followed by a short clarifying question to help narrow it down (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?).
+- If no arc fits, respond with NONE.
 
 ARCS:
 ${arcList}
@@ -963,7 +967,7 @@ ${arcList}
 USER'S DILEMMA AND CONTEXT:
 ${userBlock}
 
-Reply with only the reply key or NONE.`;
+Reply with one key, or comma-separated keys (and optional QUESTION: line), or NONE.`;
 
       const genRes = await fetch("/api/chat/ollama/generate", {
         method: "POST",
@@ -977,11 +981,28 @@ Reply with only the reply key or NONE.`;
       });
       const genData = await genRes.json().catch(() => ({}));
       const raw = ((genData.response ?? genData.message ?? "") + "").trim();
-      const firstLine = raw.split(/\n/)[0]?.trim() ?? "";
-      const token = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
+      const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean);
+      const firstLine = lines[0] ?? "";
+      const questionLine = lines.find((l) => /^question:\s*/i.test(l));
+      const question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
-      const arc = token === "none" ? "NONE" : validNames.has(token) ? token : (raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR");
-      setArcClassificationResult({ arc, raw: raw.slice(0, 200) });
+      const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
+      const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
+      let arc: string;
+      let arcs: string[] | undefined;
+      if (keys.length > 1) {
+        arc = keys[0] ?? "UNKNOWN";
+        arcs = keys;
+      } else if (keys.length === 1) {
+        arc = keys[0];
+      } else if (singleKey === "none") {
+        arc = "NONE";
+      } else if (validNames.has(singleKey)) {
+        arc = singleKey;
+      } else {
+        arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
+      }
+      setArcClassificationResult({ arc, arcs: arcs?.length ? arcs : undefined, question, raw: raw.slice(0, 300) });
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
@@ -1215,9 +1236,20 @@ Reply with only the reply key or NONE.`;
             {arcClassificationResult && (
               <div className="chat-message assistant">
                 <div className="chat-bubble" style={{ background: "var(--arc-banner-bg, #e0f2fe)", border: "1px solid var(--arc-banner-border, #0ea5e9)" }}>
-                  <strong>Selected arc:</strong> {arcClassificationResult.arc}
-                  {arcClassificationResult.raw && arcClassificationResult.arc === "UNKNOWN" && (
-                    <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
+                  {arcClassificationResult.arcs && arcClassificationResult.arcs.length > 1 ? (
+                    <>
+                      <strong>Possible arcs:</strong> {arcClassificationResult.arcs.join(", ")}
+                      {arcClassificationResult.question && (
+                        <p style={{ marginTop: 8, marginBottom: 0 }}><strong>Clarifying question:</strong> {arcClassificationResult.question}</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <strong>Selected arc:</strong> {arcClassificationResult.arc}
+                      {arcClassificationResult.raw && arcClassificationResult.arc.startsWith("UNKNOWN") && (
+                        <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
