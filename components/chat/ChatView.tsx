@@ -887,7 +887,7 @@ Return your response as JSON in the following format:
       const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
 
 - If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
-- If two or more arcs could fit and you're unsure, respond with those keys separated by commas (e.g. change_initiative, problem_of_practice_implementing). You MUST then add a new line starting with QUESTION: and a short clarifying question to help the user choose (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?).
+- If two or more arcs could fit and you're unsure, respond with those keys separated by commas. You MUST then add a new line starting with QUESTION: and one short, situation-specific clarifying question that refers to their dilemma (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?). Do not repeat arc names; ask in plain language tailored to what they shared.
 - If no arc fits, respond with NONE.
 
 ARCS:
@@ -944,15 +944,21 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       if (selectedArcs && selectedArcs.length > 1) {
         const displayNames = selectedArcs.map((k) => arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ")).filter(Boolean);
         const namePart = userPreferredName.trim() ? `${userPreferredName.trim()}, ` : "";
-        const optionsPhrase = displayNames.length === 2
-          ? `**${displayNames[0]}** or **${displayNames[1]}**`
-          : displayNames.length > 2
-            ? `**${displayNames.slice(0, -1).join("**, **")}**, or **${displayNames[displayNames.length - 1]}**`
-            : "";
-        const verb = displayNames.length === 2 ? "Does" : "Do";
-        displayQuestion = optionsPhrase
-          ? `${namePart}I want to make sure I'm on the right track. ${verb} ${optionsPhrase} sound closer to what you're working on? A quick note below will help me tailor our conversation.`
-          : undefined;
+        if (question && question.length > 0) {
+          let sanitized = question;
+          selectedArcs.forEach((k) => {
+            const dname = arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ");
+            sanitized = sanitized.replace(new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), dname);
+          });
+          displayQuestion = sanitized ? `${namePart}${sanitized}` : undefined;
+        }
+        if (!displayQuestion && displayNames.length >= 2) {
+          const optionsPhrase = displayNames.length === 2
+            ? `**${displayNames[0]}** or **${displayNames[1]}**`
+            : `**${displayNames.slice(0, -1).join("**, **")}**, or **${displayNames[displayNames.length - 1]}**`;
+          const verb = displayNames.length === 2 ? "Does" : "Do";
+          displayQuestion = `${namePart}${verb} ${optionsPhrase} sound closer to what you're working on? Add a note below to help me tailor our conversation.`;
+        }
       }
       setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question: displayQuestion, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(text);
@@ -1301,51 +1307,9 @@ Reply with exactly one key, or NONE.`;
               <div className="chat-message assistant">
                 <div className="chat-bubble">
                   {arcClassificationResult.question ? (
-                    <>
-                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(arcClassificationResult.question) }} />
-                      <div className="clarification-reply-wrap">
-                        <textarea
-                          className="chat-input"
-                          placeholder="Type your answer..."
-                          rows={2}
-                          value={clarifyingInputValue}
-                          onChange={(e) => setClarifyingInputValue(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitClarification(); } }}
-                        />
-                        <button
-                          type="button"
-                          className="chat-footer-btn chat-send-btn"
-                          disabled={loading}
-                          onClick={() => submitClarification()}
-                          title="Send"
-                        >
-                          <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
-                        </button>
-                      </div>
-                    </>
+                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(arcClassificationResult.question) }} />
                   ) : (
-                    <>
-                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(userPreferredName.trim() ? `${userPreferredName.trim()}, which of these feels closer? Add a note below and send.` : "Which of these feels closer? Add a note below and send.") }} />
-                      <div className="clarification-reply-wrap">
-                        <textarea
-                          className="chat-input"
-                          placeholder="Type your answer..."
-                          rows={2}
-                          value={clarifyingInputValue}
-                          onChange={(e) => setClarifyingInputValue(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitClarification(); } }}
-                        />
-                        <button
-                          type="button"
-                          className="chat-footer-btn chat-send-btn"
-                          disabled={loading}
-                          onClick={() => submitClarification()}
-                          title="Send"
-                        >
-                          <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
-                        </button>
-                      </div>
-                    </>
+                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(userPreferredName.trim() ? `${userPreferredName.trim()}, which of these feels closer? Add a note below and send.` : "Which of these feels closer? Add a note below and send.") }} />
                   )}
                 </div>
               </div>
@@ -1405,19 +1369,32 @@ Reply with exactly one key, or NONE.`;
           )}
           <textarea
             className="chat-input"
-            placeholder={sessionFinished ? "Session finished." : "Type your message..."}
+            placeholder={
+              sessionFinished
+                ? "Session finished."
+                : (arcClassificationResult?.arcs?.length ?? 0) > 1
+                  ? "Add a note to clarify which path fits..."
+                  : "Type your message..."
+            }
             rows={2}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            value={(arcClassificationResult?.arcs?.length ?? 0) > 1 ? clarifyingInputValue : inputValue}
+            onChange={(e) => ((arcClassificationResult?.arcs?.length ?? 0) > 1 ? setClarifyingInputValue(e.target.value) : setInputValue(e.target.value))}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage();
+                if ((arcClassificationResult?.arcs?.length ?? 0) > 1) submitClarification();
+                else sendMessage();
               }
             }}
             disabled={sessionFinished}
           />
-          <button type="button" className="chat-footer-btn chat-send-btn" disabled={sendDisabled} onClick={() => sendMessage()} title="Send">
+          <button
+            type="button"
+            className="chat-footer-btn chat-send-btn"
+            disabled={(arcClassificationResult?.arcs?.length ?? 0) > 1 ? loading : sendDisabled}
+            onClick={() => ((arcClassificationResult?.arcs?.length ?? 0) > 1 ? submitClarification() : sendMessage())}
+            title="Send"
+          >
             <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
           </button>
         </div>
