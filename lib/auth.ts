@@ -63,7 +63,11 @@ providers.push(
   })
 );
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "");
+const authBasePath = basePath ? `${basePath}/api/auth` : undefined;
+
 export const authOptions: NextAuthOptions = {
+  basePath: authBasePath,
   providers,
   callbacks: {
     async signIn() {
