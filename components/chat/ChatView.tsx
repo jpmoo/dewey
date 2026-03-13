@@ -980,7 +980,11 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         }),
       });
       const genData = await genRes.json().catch(() => ({}));
-      const raw = ((genData.response ?? genData.message ?? "") + "").trim();
+      let raw = ((genData.response ?? genData.message ?? "") + "").trim();
+      if (!raw && !genRes.ok) {
+        const err = (genData as { error?: string }).error;
+        raw = err ? `API error: ${err}` : `HTTP ${genRes.status}`;
+      }
       const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean);
       const firstLine = lines[0] ?? "";
       const questionLine = lines.find((l) => /^question:\s*/i.test(l));
@@ -988,6 +992,8 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
+      // If no key found on first line, search entire response for any valid arc name (model may have said "The arc is change_initiative")
+      const allKeysInRaw = raw ? [...validNames].filter((name) => raw.toLowerCase().includes(name)) : [];
       let arc: string;
       let arcs: string[] | undefined;
       if (keys.length > 1) {
@@ -995,14 +1001,17 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         arcs = keys;
       } else if (keys.length === 1) {
         arc = keys[0];
-      } else if (singleKey === "none") {
+      } else if (singleKey === "none" || /^none$/i.test(raw)) {
         arc = "NONE";
       } else if (validNames.has(singleKey)) {
         arc = singleKey;
+      } else if (allKeysInRaw.length >= 1) {
+        arc = allKeysInRaw[0];
+        if (allKeysInRaw.length > 1) arcs = [...new Set(allKeysInRaw)];
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
       }
-      setArcClassificationResult({ arc, arcs: arcs?.length ? arcs : undefined, question, raw: raw.slice(0, 300) });
+      setArcClassificationResult({ arc, arcs: arcs?.length ? arcs : undefined, question, raw: raw.slice(0, 400) });
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
@@ -1246,7 +1255,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
                   ) : (
                     <>
                       <strong>Selected arc:</strong> {arcClassificationResult.arc}
-                      {arcClassificationResult.raw && arcClassificationResult.arc.startsWith("UNKNOWN") && (
+                      {arcClassificationResult.raw && (arcClassificationResult.arc.startsWith("UNKNOWN") || arcClassificationResult.arc === "ERROR") && (
                         <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{arcClassificationResult.raw}</pre>
                       )}
                     </>
