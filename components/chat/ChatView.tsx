@@ -995,10 +995,10 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       // If no key found on first line, search entire response for any valid arc name (model may have said "The arc is change_initiative")
       const allKeysInRaw = raw ? [...validNames].filter((name) => raw.toLowerCase().includes(name)) : [];
       let arc: string;
-      let arcs: string[] | undefined;
+      let selectedArcs: string[] | undefined;
       if (keys.length > 1) {
         arc = keys[0] ?? "UNKNOWN";
-        arcs = keys;
+        selectedArcs = keys;
       } else if (keys.length === 1) {
         arc = keys[0];
       } else if (singleKey === "none" || /^none$/i.test(raw)) {
@@ -1007,11 +1007,11 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         arc = singleKey;
       } else if (allKeysInRaw.length >= 1) {
         arc = allKeysInRaw[0];
-        if (allKeysInRaw.length > 1) arcs = [...new Set(allKeysInRaw)];
+        if (allKeysInRaw.length > 1) selectedArcs = [...new Set(allKeysInRaw)];
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
       }
-      setArcClassificationResult({ arc, arcs: arcs?.length ? arcs : undefined, question, raw: raw.slice(0, 400) });
+      setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question, raw: raw.slice(0, 400) });
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
