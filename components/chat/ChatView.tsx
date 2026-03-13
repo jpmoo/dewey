@@ -642,11 +642,13 @@ export function ChatView() {
       }
       type PhaseDef = { machine_name: string; display_name?: string; objective?: string; ending_criteria?: string; callback_invitation?: string | null };
       let phaseDef: PhaseDef | null = null;
+      let phasesList: PhaseDef[] = [];
       try {
         const phasesRes = await fetch(pathWithBase("/api/coaching/phases"));
         if (phasesRes.ok) {
           const data = (await phasesRes.json()) as { phases?: PhaseDef[] };
-          phaseDef = (data.phases ?? []).find((p) => p.machine_name === phaseMachineName) ?? null;
+          phasesList = data.phases ?? [];
+          phaseDef = phasesList.find((p) => p.machine_name === phaseMachineName) ?? null;
         }
       } catch {
         // ignore
@@ -752,9 +754,13 @@ Return your response as JSON in the following format:
         const response = (claudeData.response ?? "") as string;
         const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
         const phaseComplete = !!claudeData.phase_complete;
+        const hasNext = idx + 1 < seq.length;
+        const nextPhaseMachineName = hasNext ? seq[idx + 1] : null;
+        const nextPhaseDef = nextPhaseMachineName ? phasesList.find((p) => p.machine_name === nextPhaseMachineName) ?? null : null;
+        const phaseLabelForMessage = phaseComplete && nextPhaseDef ? (nextPhaseDef.display_name ?? nextPhaseMachineName!) : displayName;
 
         const arcForMessage = arcOverride ?? coachingArc ?? undefined;
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcForMessage, phase: displayName }]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcForMessage, phase: phaseLabelForMessage }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
         for (const idx of ragSourcesUsed) {
@@ -766,7 +772,6 @@ Return your response as JSON in the following format:
         everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
 
         if (phaseComplete) {
-          const hasNext = idx + 1 < seq.length;
           if (hasNext) {
             setCurrentPhaseIndex((i) => i + 1);
           } else {
