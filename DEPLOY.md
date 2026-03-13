@@ -266,6 +266,26 @@ dewey.example.com {
 
 Ensure `NEXTAUTH_URL` is `https://dewey.example.com` and that OAuth callback URLs in your providers match (e.g. `https://dewey.example.com/api/auth/callback/google`).
 
+**Serving Dewey under a path (e.g. `/dewey`)** when Caddy is shared with other services:
+
+1. Add a `handle` block **before** your default/catch-all so `/dewey` is matched first:
+
+   ```
+   handle /dewey* {
+     reverse_proxy 127.0.0.1:3000 {
+       header_up Host {host}
+       header_up X-Forwarded-Proto {scheme}
+       header_up X-Forwarded-For {remote_host}
+     }
+   }
+   ```
+
+2. Set env so the app generates correct URLs and auth callbacks:
+   - `NEXT_PUBLIC_BASE_PATH=/dewey`
+   - `NEXTAUTH_URL=https://your-host/dewey` (use the full URL users see, including port if needed, e.g. `https://machine:8083/dewey`)
+
+3. Rebuild after setting `NEXT_PUBLIC_BASE_PATH`: `npm run build` then restart the app.
+
 ---
 
 ## 7. First-time setup
