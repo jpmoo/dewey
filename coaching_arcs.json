@@ -40,7 +40,7 @@
     {
       "name": "problem_of_practice_implementing",
       "display_name": "Problem of Practice — In Implementation",
-      "description": "The leader has a plan in motion to rectify a specific problem of practiceand is navigating what is happening as they execute it.",
+      "description": "The leader already had a plan to fix a specific problem of practice and is now in the middle of executing it—navigating obstacles or unexpected results. Not for rolling out a new program or initiative (use Change Initiative for that).",
       "phase_sequence": [
         "implementation",
         "interrogate_results"
@@ -50,7 +50,8 @@
         "We started the plan and",
         "I am implementing and running into",
         "Things are underway but",
-        "I have been trying this approach"
+        "I have been trying this approach",
+        "We had a plan to fix this and we are now doing it"
       ]
     },
     {
@@ -86,7 +87,12 @@
         "There is resistance to",
         "I am trying to shift the culture",
         "We are moving to a new approach and people are not sure about it",
-        "This is a big change and I need to help people understand it"
+        "This is a big change and I need to help people understand it",
+        "We are implementing a new program",
+        "Implementing a new curriculum or program",
+        "It is a big change for our teachers",
+        "New program or initiative rollout",
+        "Introducing a new approach or program and need to support staff"
       ]
     },
     {
