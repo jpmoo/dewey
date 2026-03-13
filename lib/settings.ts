@@ -54,6 +54,12 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
   return rowToSettings(res.rows[0] ?? null);
 }
 
+/** Read a default from process.env only (e.g. .env.local). Use when creating new users so file wins over runtime config. */
+function getDefaultFromProcessEnv(key: string): string | undefined {
+  const v = process.env[key];
+  return v !== undefined && v !== "" ? String(v).trim() : undefined;
+}
+
 /** Default settings from env (DEWEY_DEFAULT_*). Uses runtime config when set in admin so changes take effect immediately. */
 export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
   const out: Partial<ChatSettings> = {};
@@ -72,6 +78,28 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
     if (arr.length) out.ragCollections = arr;
   }
   const defaultModel = getRuntimeEnvSync("DEWEY_DEFAULT_MODEL")?.trim();
+  if (defaultModel) out.model = defaultModel;
+  return out;
+}
+
+/** Default settings from process.env only (.env.local). Use when creating new users so the file is the source of truth, not runtime config. */
+export function getDefaultSettingsFromEnvFile(): Partial<ChatSettings> {
+  const out: Partial<ChatSettings> = {};
+  const ollama = getDefaultFromProcessEnv("DEWEY_DEFAULT_OLLAMA_URL");
+  if (ollama) out.ollamaUrl = ollama;
+  const rag = getDefaultFromProcessEnv("DEWEY_DEFAULT_RAG_SERVER_URL");
+  if (rag) out.ragServerUrl = rag;
+  const thresh = getDefaultFromProcessEnv("DEWEY_DEFAULT_RAG_THRESHOLD");
+  if (thresh !== undefined && thresh !== "") {
+    const n = parseFloat(thresh);
+    if (Number.isFinite(n)) out.ragThreshold = n;
+  }
+  const collections = getDefaultFromProcessEnv("DEWEY_DEFAULT_RAG_COLLECTIONS");
+  if (collections) {
+    const arr = collections.split(",").map((s) => s.trim()).filter(Boolean);
+    if (arr.length) out.ragCollections = arr;
+  }
+  const defaultModel = getDefaultFromProcessEnv("DEWEY_DEFAULT_MODEL");
   if (defaultModel) out.model = defaultModel;
   return out;
 }

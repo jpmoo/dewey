@@ -5,7 +5,7 @@ import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { AuthProvider } from "@/lib/db";
 import { findUserByOAuth, createUserForOAuth, getUserByUsername } from "@/lib/db";
-import { getDefaultSettingsFromEnv, getSettings, setSettings } from "@/lib/settings";
+import { getDefaultSettingsFromEnvFile, getSettings, setSettings } from "@/lib/settings";
 import { verifyPassword } from "@/lib/password";
 
 const providers: NextAuthOptions["providers"] = [];
@@ -97,7 +97,7 @@ export const authOptions: NextAuthOptions = {
           ourUserId = String(ourUser.id);
           const existing = await getSettings(ourUserId);
           if (Object.keys(existing).length === 0) {
-            await setSettings(ourUserId, { ...getDefaultSettingsFromEnv(), is_system_admin: false });
+            await setSettings(ourUserId, { ...getDefaultSettingsFromEnvFile(), is_system_admin: false });
           }
         } else {
           ourUserId = user.id;
