@@ -985,7 +985,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
         return;
       }
-      const arcsData = (await arcsRes.json()) as { arcs?: { name: string; description?: string; diagnostic_markers?: string[] }[] };
+      const arcsData = (await arcsRes.json()) as { arcs?: { name: string; display_name?: string; description?: string; diagnostic_markers?: string[] }[] };
       const arcs = Array.isArray(arcsData.arcs) ? arcsData.arcs : [];
       const arcList = arcs
         .map((a) => `- Description: ${a.description ?? ""}\n  Diagnostic markers: ${(a.diagnostic_markers ?? []).join("; ")}\n  Reply with this key if this arc fits: ${a.name}`)
