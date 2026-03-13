@@ -940,11 +940,21 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
       }
-      if (selectedArcs && selectedArcs.length > 1 && !question) {
+      let displayQuestion: string | undefined;
+      if (selectedArcs && selectedArcs.length > 1) {
         const displayNames = selectedArcs.map((k) => arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ")).filter(Boolean);
-        question = displayNames.length >= 2 ? `Which best describes your situation: ${displayNames.join(" or ")}?` : undefined;
+        const namePart = userPreferredName.trim() ? `${userPreferredName.trim()}, ` : "";
+        const optionsPhrase = displayNames.length === 2
+          ? `**${displayNames[0]}** or **${displayNames[1]}**`
+          : displayNames.length > 2
+            ? `**${displayNames.slice(0, -1).join("**, **")}**, or **${displayNames[displayNames.length - 1]}**`
+            : "";
+        const verb = displayNames.length === 2 ? "Does" : "Do";
+        displayQuestion = optionsPhrase
+          ? `${namePart}I want to make sure I'm on the right track. ${verb} ${optionsPhrase} sound closer to what you're working on? A quick note below will help me tailor our conversation.`
+          : undefined;
       }
-      setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question, raw: raw.slice(0, 400) });
+      setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question: displayQuestion, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(text);
 
       const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
@@ -1000,19 +1010,15 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
-
-- If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
-- If two or more arcs could fit and you're unsure, respond with those keys separated by commas. You MUST add a new line starting with QUESTION: and a short clarifying question.
-- If no arc fits, respond with NONE.
+      const classificationPrompt = `You are classifying a school leader's dilemma. The text below includes their original dilemma AND their clarification — the user has already answered a clarifying question. You MUST choose exactly ONE arc that best fits. Do not return multiple keys. Do not add a QUESTION line. Reply with only the single arc's reply key (exact snake_case value), or NONE if no arc fits.
 
 ARCS:
 ${arcList}
 
-USER'S DILEMMA AND CONTEXT:
+USER'S DILEMMA AND CLARIFICATION:
 ${userBlock}
 
-Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.`;
+Reply with exactly one key, or NONE.`;
 
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1027,37 +1033,32 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       }
       const lines = raw.split(/\n/).map((l) => l.trim()).filter(Boolean);
       const firstLine = lines[0] ?? "";
-      const questionLine = lines.find((l) => /^question:\s*/i.test(l));
-      let question = questionLine ? questionLine.replace(/^question:\s*/i, "").trim() : undefined;
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
       const allKeysInRaw = raw ? Array.from(validNames).filter((name) => raw.toLowerCase().includes(name)) : [];
       let arc: string;
       let selectedArcs: string[] | undefined;
-      if (keys.length > 1) {
-        arc = keys[0] ?? "UNKNOWN";
-        selectedArcs = keys;
-      } else if (keys.length === 1) {
+      if (keys.length >= 1) {
         arc = keys[0];
+        selectedArcs = undefined;
       } else if (singleKey === "none" || /^none$/i.test(raw)) {
         arc = "NONE";
+        selectedArcs = undefined;
       } else if (validNames.has(singleKey)) {
         arc = singleKey;
+        selectedArcs = undefined;
       } else if (allKeysInRaw.length >= 1) {
         arc = allKeysInRaw[0];
-        if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
+        selectedArcs = undefined;
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
+        selectedArcs = undefined;
       }
-      if (selectedArcs && selectedArcs.length > 1 && !question) {
-        const displayNames = selectedArcs.map((k) => arcs.find((a) => a.name.toLowerCase() === k)?.display_name ?? k.replace(/_/g, " ")).filter(Boolean);
-        question = displayNames.length >= 2 ? `Which best describes your situation: ${displayNames.join(" or ")}?` : undefined;
-      }
-      setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question, raw: raw.slice(0, 400) });
+      setArcClassificationResult({ arc, arcs: undefined, question: undefined, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(enrichedDilemma);
 
-      const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
+      const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN");
       if (validSingleArc) {
         try {
           const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
@@ -1301,28 +1302,50 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
                 <div className="chat-bubble">
                   {arcClassificationResult.question ? (
                     <>
-                      <p style={{ marginBottom: 8 }}>{arcClassificationResult.question}</p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(arcClassificationResult.question) }} />
+                      <div className="clarification-reply-wrap">
                         <textarea
-                          className="chat-form-input"
-                          placeholder="Your answer..."
+                          className="chat-input"
+                          placeholder="Type your answer..."
                           rows={2}
                           value={clarifyingInputValue}
                           onChange={(e) => setClarifyingInputValue(e.target.value)}
-                          style={{ resize: "vertical", minHeight: 56 }}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitClarification(); } }}
                         />
                         <button
                           type="button"
-                          className="chat-dialog-btn chat-dialog-btn-save"
+                          className="chat-footer-btn chat-send-btn"
                           disabled={loading}
                           onClick={() => submitClarification()}
+                          title="Send"
                         >
-                          Submit clarification
+                          <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
                         </button>
                       </div>
                     </>
                   ) : (
-                    <p style={{ marginBottom: 0 }}>Which best describes your situation? Add a note below and submit.</p>
+                    <>
+                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(userPreferredName.trim() ? `${userPreferredName.trim()}, which of these feels closer? Add a note below and send.` : "Which of these feels closer? Add a note below and send.") }} />
+                      <div className="clarification-reply-wrap">
+                        <textarea
+                          className="chat-input"
+                          placeholder="Type your answer..."
+                          rows={2}
+                          value={clarifyingInputValue}
+                          onChange={(e) => setClarifyingInputValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitClarification(); } }}
+                        />
+                        <button
+                          type="button"
+                          className="chat-footer-btn chat-send-btn"
+                          disabled={loading}
+                          onClick={() => submitClarification()}
+                          title="Send"
+                        >
+                          <img src={pathWithBase("/chat-assets/send-alt-1-svgrepo-com.svg")} alt="Send" />
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

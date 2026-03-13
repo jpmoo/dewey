@@ -378,6 +378,17 @@
 .dewey-chat .chat-message.assistant .chat-bubble .markdown-body code { background: var(--bg-primary); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
 .dewey-chat .chat-message.assistant .chat-bubble .markdown-body pre { margin: 0.6em 0; padding: 10px; border-radius: 8px; overflow-x: auto; background: var(--bg-primary); }
 .dewey-chat .chat-message.assistant .chat-bubble .markdown-body a { color: inherit; text-decoration: underline; }
+.dewey-chat .chat-bubble .clarification-reply-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.dewey-chat .chat-bubble .clarification-reply-wrap .chat-input {
+  flex: 1;
+  min-width: 0;
+}
 @keyframes dewey-fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
