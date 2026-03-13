@@ -1,5 +1,4 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { getPool } from "@/lib/pg";
 
 export type AuthProvider = "dewey" | "google" | "azure-ad" | "apple";
 
@@ -14,88 +13,96 @@ export interface User {
   created_at: string;
 }
 
-function getDataDir(): string {
-  return process.env.DEWEY_DATA_DIR ?? join(process.cwd(), "data");
-}
-
-function getUsersPath(): string {
-  return join(getDataDir(), "users.json");
-}
-
-async function ensureDataDir(): Promise<void> {
-  await mkdir(getDataDir(), { recursive: true });
-}
-
-async function readUsers(): Promise<User[]> {
-  try {
-    const raw = await readFile(getUsersPath(), "utf-8");
-    const data = JSON.parse(raw);
-    const list = Array.isArray(data.users) ? data.users : [];
-    return list.map((u: Partial<User>) => ({
-      ...u,
-      auth_provider: (u.auth_provider ?? "dewey") as AuthProvider,
-    })) as User[];
-  } catch {
-    return [];
-  }
-}
-
-async function writeUsers(users: User[]): Promise<void> {
-  await ensureDataDir();
-  await writeFile(getUsersPath(), JSON.stringify({ users }, null, 2), "utf-8");
+function rowToUser(row: {
+  id: number;
+  auth_provider: string;
+  username?: string | null;
+  password_hash?: string | null;
+  provider_id?: string | null;
+  email?: string | null;
+  name?: string | null;
+  created_at: Date;
+}): User {
+  return {
+    id: row.id,
+    auth_provider: (row.auth_provider as AuthProvider) || "dewey",
+    username: row.username ?? undefined,
+    password_hash: row.password_hash ?? undefined,
+    provider_id: row.provider_id ?? undefined,
+    email: row.email ?? null,
+    name: row.name ?? null,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  };
 }
 
 export async function getUsersCount(): Promise<number> {
-  const users = await readUsers();
-  return users.length;
+  const pool = getPool();
+  const res = await pool.query("SELECT COUNT(*)::int AS n FROM users");
+  return res.rows[0]?.n ?? 0;
 }
 
 export async function getAllUsers(): Promise<{ id: number; username: string; created_at: string; auth_provider: AuthProvider }[]> {
-  const users = await readUsers();
-  return users.map((u) => ({
-    id: u.id,
-    username: u.username ?? u.email ?? u.name ?? `User ${u.id}`,
-    created_at: u.created_at,
-    auth_provider: u.auth_provider ?? "dewey",
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT id, auth_provider, username, email, name, created_at FROM users ORDER BY id"
+  );
+  return res.rows.map((row) => ({
+    id: row.id,
+    username: row.username ?? row.email ?? row.name ?? `User ${row.id}`,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    auth_provider: (row.auth_provider as AuthProvider) ?? "dewey",
   }));
 }
 
 export async function getUserByUsername(username: string): Promise<User | null> {
-  const users = await readUsers();
+  const pool = getPool();
   const normalized = username.trim().toLowerCase();
-  return users.find((u) => (u.auth_provider ?? "dewey") === "dewey" && u.username?.toLowerCase() === normalized) ?? null;
+  const res = await pool.query(
+    "SELECT id, auth_provider, username, password_hash, provider_id, email, name, created_at FROM users WHERE auth_provider = 'dewey' AND LOWER(username) = $1 LIMIT 1",
+    [normalized]
+  );
+  const row = res.rows[0];
+  return row ? rowToUser(row) : null;
 }
 
 export async function getUserById(id: number): Promise<User | null> {
-  const users = await readUsers();
-  return users.find((u) => u.id === id) ?? null;
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT id, auth_provider, username, password_hash, provider_id, email, name, created_at FROM users WHERE id = $1 LIMIT 1",
+    [id]
+  );
+  const row = res.rows[0];
+  return row ? rowToUser(row) : null;
 }
 
 export async function createUser(params: {
   username: string;
   password_hash: string;
 }): Promise<User> {
-  const users = await readUsers();
+  const pool = getPool();
   const normalized = params.username.trim();
   if (!normalized) throw new Error("Username is required");
-  const existing = users.find((u) => (u.auth_provider ?? "dewey") === "dewey" && u.username?.toLowerCase() === normalized.toLowerCase());
+  const existing = await getUserByUsername(normalized);
   if (existing) throw new Error("Username already taken");
-  const maxId = users.length ? Math.max(...users.map((u) => u.id)) : 0;
-  const user: User = {
-    id: maxId + 1,
-    auth_provider: "dewey",
-    username: normalized,
-    password_hash: params.password_hash,
-    created_at: new Date().toISOString(),
-  };
-  users.push(user);
-  await writeUsers(users);
-  return user;
+  const res = await pool.query(
+    `INSERT INTO users (auth_provider, username, password_hash)
+     VALUES ('dewey', $1, $2)
+     RETURNING id, auth_provider, username, password_hash, provider_id, email, name, created_at`,
+    [normalized, params.password_hash]
+  );
+  const row = res.rows[0];
+  if (!row) throw new Error("Failed to create user");
+  return rowToUser(row);
 }
 
 export async function findUserByOAuth(provider: AuthProvider, providerId: string): Promise<User | null> {
-  const users = await readUsers();
-  return users.find((u) => u.auth_provider === provider && u.provider_id === providerId) ?? null;
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT id, auth_provider, username, password_hash, provider_id, email, name, created_at FROM users WHERE auth_provider = $1 AND provider_id = $2 LIMIT 1",
+    [provider, providerId]
+  );
+  const row = res.rows[0];
+  return row ? rowToUser(row) : null;
 }
 
 export async function createUserForOAuth(params: {
@@ -104,30 +111,22 @@ export async function createUserForOAuth(params: {
   email?: string | null;
   name?: string | null;
 }): Promise<User> {
-  const users = await readUsers();
-  const existing = users.find(
-    (u) => u.auth_provider === params.auth_provider && u.provider_id === params.provider_id
-  );
+  const pool = getPool();
+  const existing = await findUserByOAuth(params.auth_provider, params.provider_id);
   if (existing) return existing;
-  const maxId = users.length ? Math.max(...users.map((u) => u.id)) : 0;
-  const user: User = {
-    id: maxId + 1,
-    auth_provider: params.auth_provider,
-    provider_id: params.provider_id,
-    email: params.email ?? null,
-    name: params.name ?? null,
-    created_at: new Date().toISOString(),
-  };
-  users.push(user);
-  await writeUsers(users);
-  return user;
+  const res = await pool.query(
+    `INSERT INTO users (auth_provider, provider_id, email, name)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, auth_provider, username, password_hash, provider_id, email, name, created_at`,
+    [params.auth_provider, params.provider_id, params.email ?? null, params.name ?? null]
+  );
+  const row = res.rows[0];
+  if (!row) throw new Error("Failed to create user");
+  return rowToUser(row);
 }
 
 export async function deleteUser(id: number): Promise<boolean> {
-  const users = await readUsers();
-  const idx = users.findIndex((u) => u.id === id);
-  if (idx === -1) return false;
-  users.splice(idx, 1);
-  await writeUsers(users);
-  return true;
+  const pool = getPool();
+  const res = await pool.query("DELETE FROM users WHERE id = $1", [id]);
+  return (res.rowCount ?? 0) > 0;
 }

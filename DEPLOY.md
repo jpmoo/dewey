@@ -26,7 +26,31 @@ Or upload a tarball and extract it.
 
 ---
 
-## 2. Install and build
+## 2. Database (PostgreSQL)
+
+Dewey stores users and per-user settings in PostgreSQL so multiple concurrent users get correct, isolated data.
+
+1. Install Postgres (e.g. `sudo apt install postgresql` on Ubuntu).
+2. Create a database and user:
+
+   ```bash
+   sudo -u postgres psql -c "CREATE USER dewey WITH PASSWORD 'your_password';"
+   sudo -u postgres psql -c "CREATE DATABASE dewey OWNER dewey;"
+   ```
+
+3. Run the schema once (from the project root):
+
+   ```bash
+   psql "postgresql://dewey:your_password@localhost:5432/dewey" -f scripts/schema.sql
+   ```
+
+4. Set `DATABASE_URL` in `.env.local` (see below).
+
+**Migrating from JSON:** If you previously used `data/users.json` and `data/settings.json`, those files are no longer read. Create the Postgres schema and set `DATABASE_URL`. Re-run first-time setup (or register) to create the first user; existing JSON user data is not auto-imported.
+
+---
+
+## 3. Install and build
 
 ```bash
 npm ci
@@ -35,7 +59,7 @@ npm run build
 
 ---
 
-## 3. Environment variables
+## 4. Environment variables
 
 Create `.env.local` in the project root (or set env in systemd/PM2):
 
@@ -50,21 +74,22 @@ cp .env.example .env.local
 |------------------|-----------------|
 | `NEXTAUTH_SECRET` | `openssl rand -base64 32` |
 | `NEXTAUTH_URL`    | `https://dewey.example.com` (must match how users reach the app) |
+| `DATABASE_URL`    | `postgresql://user:password@localhost:5432/dewey` — Postgres for users and settings |
 
 **Optional (data and port):**
 
 | Variable          | Default   | Notes |
 |-------------------|-----------|--------|
-| `DEWEY_DATA_DIR`  | `./data`  | Directory for `users.json` and `settings.json`. Use an absolute path in production (e.g. `/var/lib/dewey/data`) so it’s stable and backupable. |
+| `DEWEY_DATA_DIR`  | `./data`  | Directory for runtime config (e.g. `dewey-runtime.json`). Use an absolute path in production (e.g. `/var/lib/dewey/data`) so it’s stable and backupable. |
 | `PORT`            | `3000`    | Port for `next start`. |
 
 **Optional (SSO):** set the `AUTH_*_ID` and `AUTH_*_SECRET` for each provider you use (Apple, Google, Microsoft). Leave unset to disable.
 
 ---
 
-## 4. Data directory
+## 5. Data directory (optional)
 
-If you set `DEWEY_DATA_DIR`, create it and give the process write access:
+If you set `DEWEY_DATA_DIR` for runtime config, create it and give the process write access:
 
 ```bash
 sudo mkdir -p /var/lib/dewey/data

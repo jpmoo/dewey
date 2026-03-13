@@ -241,7 +241,7 @@ export function ChatView() {
         byKey.set(key, { sourceName: c.sourceName, url: c.url, maxSimilarity: sim });
       }
     }
-    return [...byKey.values()].sort((a, b) => b.maxSimilarity - a.maxSimilarity);
+    return Array.from(byKey.values()).sort((a, b) => b.maxSimilarity - a.maxSimilarity);
   }, [citations]);
 
   const loadFromStorage = useCallback(() => {
@@ -754,9 +754,9 @@ Return your response as JSON in the following format:
           const c = numberedChunks.find((x) => x.num === idx);
           if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
         }
-        setCitations([...citedSources.values()].map((v) => ({ sourceName: v.sourceName, url: v.url })));
-        citationKeysByTurnRef.current.push(new Set(citedSources.keys()));
-        everSeenCitationsRef.current = new Map([...everSeenCitationsRef.current, ...citedSources]);
+        setCitations(Array.from(citedSources.values()).map((v) => ({ sourceName: v.sourceName, url: v.url })));
+        citationKeysByTurnRef.current.push(new Set(Array.from(citedSources.keys())));
+        everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
 
         if (phaseComplete) {
           const hasNext = currentPhaseIndex + 1 < phaseSequence.length;
@@ -914,7 +914,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
       // If no key found on first line, search entire response for any valid arc name (model may have said "The arc is change_initiative")
-      const allKeysInRaw = raw ? [...validNames].filter((name) => raw.toLowerCase().includes(name)) : [];
+      const allKeysInRaw = raw ? Array.from(validNames).filter((name) => raw.toLowerCase().includes(name)) : [];
       let arc: string;
       let selectedArcs: string[] | undefined;
       if (keys.length > 1) {
@@ -928,7 +928,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         arc = singleKey;
       } else if (allKeysInRaw.length >= 1) {
         arc = allKeysInRaw[0];
-        if (allKeysInRaw.length > 1) selectedArcs = [...new Set(allKeysInRaw)];
+        if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
       }
@@ -1020,7 +1020,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
       const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
       const keys = firstLine.split(",").map((k) => k.trim().toLowerCase()).filter((k) => validNames.has(k));
       const singleKey = firstLine.split(/\s/)[0]?.trim().toLowerCase() ?? "";
-      const allKeysInRaw = raw ? [...validNames].filter((name) => raw.toLowerCase().includes(name)) : [];
+      const allKeysInRaw = raw ? Array.from(validNames).filter((name) => raw.toLowerCase().includes(name)) : [];
       let arc: string;
       let selectedArcs: string[] | undefined;
       if (keys.length > 1) {
@@ -1034,7 +1034,7 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         arc = singleKey;
       } else if (allKeysInRaw.length >= 1) {
         arc = allKeysInRaw[0];
-        if (allKeysInRaw.length > 1) selectedArcs = [...new Set(allKeysInRaw)];
+        if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
       }

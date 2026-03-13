@@ -1,5 +1,4 @@
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { getPool } from "@/lib/pg";
 import { getRuntimeEnvSync } from "@/lib/env-admin";
 
 export interface ChatSettings {
@@ -18,36 +17,41 @@ export interface ChatSettings {
   is_system_admin?: boolean;
 }
 
-function getDataDir(): string {
-  return process.env.DEWEY_DATA_DIR ?? join(process.cwd(), "data");
+function parseUserId(userId: string): number {
+  const id = parseInt(userId, 10);
+  if (!Number.isFinite(id)) throw new Error("Invalid user id");
+  return id;
 }
 
-function getSettingsPath(): string {
-  return join(getDataDir(), "settings.json");
-}
-
-async function ensureDataDir(): Promise<void> {
-  await mkdir(getDataDir(), { recursive: true });
-}
-
-async function readAll(): Promise<Record<string, ChatSettings>> {
-  try {
-    const raw = await readFile(getSettingsPath(), "utf-8");
-    const data = JSON.parse(raw);
-    return data && typeof data === "object" ? data : {};
-  } catch {
-    return {};
-  }
-}
-
-async function writeAll(data: Record<string, ChatSettings>): Promise<void> {
-  await ensureDataDir();
-  await writeFile(getSettingsPath(), JSON.stringify(data, null, 2), "utf-8");
+function rowToSettings(row: Record<string, unknown> | null): ChatSettings {
+  if (!row) return {};
+  const arr = row.rag_collections;
+  const ragCollections = Array.isArray(arr) ? (arr as string[]) : undefined;
+  return {
+    ollamaUrl: row.ollama_url != null ? String(row.ollama_url) : undefined,
+    ragServerUrl: row.rag_server_url != null ? String(row.rag_server_url) : undefined,
+    ragThreshold: row.rag_threshold != null ? Number(row.rag_threshold) : undefined,
+    ragCollections: ragCollections?.length ? ragCollections : undefined,
+    model: row.model != null ? String(row.model) : undefined,
+    theme: row.theme != null ? String(row.theme) : undefined,
+    panelState: row.panel_state != null ? String(row.panel_state) : undefined,
+    chatFontSize: row.chat_font_size != null ? Number(row.chat_font_size) : undefined,
+    userPreferredName: row.user_preferred_name != null ? String(row.user_preferred_name) : undefined,
+    userSchoolOrOffice: row.user_school_or_office != null ? String(row.user_school_or_office) : undefined,
+    userRole: row.user_role != null ? String(row.user_role) : undefined,
+    userContext: row.user_context != null ? String(row.user_context) : undefined,
+    is_system_admin: row.is_system_admin === true,
+  };
 }
 
 export async function getSettings(userId: string): Promise<ChatSettings> {
-  const all = await readAll();
-  return all[userId] ?? {};
+  const uid = parseUserId(userId);
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT ollama_url, rag_server_url, rag_threshold, rag_collections, model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
+    [uid]
+  );
+  return rowToSettings(res.rows[0] ?? null);
 }
 
 /** Default settings from env (DEWEY_DEFAULT_*). Uses runtime config when set in admin so changes take effect immediately. */
@@ -74,38 +78,71 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
 
 /** True if any user has is_system_admin in settings (used for first-time setup vs register). */
 export async function hasSystemAdmin(): Promise<boolean> {
-  const all = await readAll();
-  for (const settings of Object.values(all)) {
-    if (settings.is_system_admin === true) return true;
-  }
-  return false;
+  const pool = getPool();
+  const res = await pool.query("SELECT 1 FROM user_settings WHERE is_system_admin = true LIMIT 1");
+  return res.rows.length > 0;
 }
 
 export async function setSettings(userId: string, partial: Partial<ChatSettings>): Promise<ChatSettings> {
-  const all = await readAll();
-  const current = all[userId] ?? {};
-  const next: ChatSettings = {
-    ...current,
-    ...partial,
-  };
-  all[userId] = next;
-  await writeAll(all);
+  const uid = parseUserId(userId);
+  const pool = getPool();
+  const current = await getSettings(userId);
+  const next: ChatSettings = { ...current, ...partial };
+
+  await pool.query(
+    `INSERT INTO user_settings (
+      user_id, ollama_url, rag_server_url, rag_threshold, rag_collections, model, theme, panel_state,
+      chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+    ON CONFLICT (user_id) DO UPDATE SET
+      ollama_url = EXCLUDED.ollama_url,
+      rag_server_url = EXCLUDED.rag_server_url,
+      rag_threshold = EXCLUDED.rag_threshold,
+      rag_collections = EXCLUDED.rag_collections,
+      model = EXCLUDED.model,
+      theme = EXCLUDED.theme,
+      panel_state = EXCLUDED.panel_state,
+      chat_font_size = EXCLUDED.chat_font_size,
+      user_preferred_name = EXCLUDED.user_preferred_name,
+      user_school_or_office = EXCLUDED.user_school_or_office,
+      user_role = EXCLUDED.user_role,
+      user_context = EXCLUDED.user_context,
+      is_system_admin = EXCLUDED.is_system_admin,
+      updated_at = NOW()`,
+    [
+      uid,
+      next.ollamaUrl ?? null,
+      next.ragServerUrl ?? null,
+      next.ragThreshold ?? null,
+      next.ragCollections ? JSON.stringify(next.ragCollections) : null,
+      next.model ?? null,
+      next.theme ?? null,
+      next.panelState ?? null,
+      next.chatFontSize ?? null,
+      next.userPreferredName ?? null,
+      next.userSchoolOrOffice ?? null,
+      next.userRole ?? null,
+      next.userContext ?? null,
+      next.is_system_admin === true,
+    ]
+  );
   return next;
 }
 
 export async function deleteSettings(userId: string): Promise<void> {
-  const all = await readAll();
-  if (!(userId in all)) return;
-  delete all[userId];
-  await writeAll(all);
+  const uid = parseUserId(userId);
+  const pool = getPool();
+  await pool.query("DELETE FROM user_settings WHERE user_id = $1", [uid]);
 }
 
 /** Apply the same partial settings to every existing user. Used when admin updates defaults and chooses "apply to all users". */
 export async function applySettingsToAllUsers(partial: Partial<ChatSettings>): Promise<void> {
-  const all = await readAll();
   if (Object.keys(partial).length === 0) return;
-  for (const userId of Object.keys(all)) {
-    all[userId] = { ...all[userId], ...partial };
+  const pool = getPool();
+  const res = await pool.query("SELECT user_id FROM user_settings");
+  for (const row of res.rows) {
+    const userId = String(row.user_id);
+    const current = await getSettings(userId);
+    await setSettings(userId, { ...current, ...partial });
   }
-  await writeAll(all);
 }

@@ -46,7 +46,7 @@ function parseEnvContent(content: string): Map<string, string> {
 /** Serialize key-value to .env format (simple, no quotes unless needed). */
 function serializeEnv(entries: Map<string, string>): string {
   const lines: string[] = [];
-  for (const [k, v] of entries) {
+  for (const [k, v] of Array.from(entries)) {
     const needsQuotes = /[\n"']/.test(v);
     lines.push(needsQuotes ? `${k}="${v.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"` : `${k}=${v}`);
   }
