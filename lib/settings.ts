@@ -8,8 +8,6 @@ export interface ChatSettings {
   ragThreshold?: number;
   ragCollections?: string[];
   model?: string;
-  systemMessage?: string;
-  systemMessageHistory?: string[];
   theme?: string;
   panelState?: string;
   chatFontSize?: number;
@@ -68,10 +66,6 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
   if (collections) {
     const arr = collections.split(",").map((s) => s.trim()).filter(Boolean);
     if (arr.length) out.ragCollections = arr;
-  }
-  const systemMsg = getRuntimeEnvSync("DEWEY_DEFAULT_SYSTEM_MESSAGE");
-  if (systemMsg != null && systemMsg !== "") {
-    out.systemMessage = systemMsg.replace(/\\n/g, "\n");
   }
   const defaultModel = getRuntimeEnvSync("DEWEY_DEFAULT_MODEL")?.trim();
   if (defaultModel) out.model = defaultModel;

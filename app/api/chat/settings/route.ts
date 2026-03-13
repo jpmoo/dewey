@@ -32,8 +32,6 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.ragThreshold === "number") partial.ragThreshold = body.ragThreshold;
   if (Array.isArray(body.ragCollections)) partial.ragCollections = body.ragCollections;
   if (typeof body.model === "string") partial.model = body.model;
-  if (typeof body.systemMessage === "string") partial.systemMessage = body.systemMessage;
-  if (Array.isArray(body.systemMessageHistory)) partial.systemMessageHistory = body.systemMessageHistory;
   if (typeof body.theme === "string") partial.theme = body.theme;
   if (typeof body.panelState === "string") partial.panelState = body.panelState;
   if (typeof body.chatFontSize === "number") partial.chatFontSize = body.chatFontSize;

@@ -72,13 +72,12 @@ export async function PATCH(
   const partial: Partial<ChatSettings> = {};
   const allowed: (keyof ChatSettings)[] = [
     "ollamaUrl", "ragServerUrl", "ragThreshold", "ragCollections", "model",
-    "systemMessage", "systemMessageHistory", "theme", "chatFontSize",
+    "theme", "chatFontSize",
     "userPreferredName", "userSchoolOrOffice", "userRole", "userContext",
     "is_system_admin",
   ];
   for (const key of allowed) {
     if (key === "ragCollections" && Array.isArray(body[key])) partial.ragCollections = body[key];
-    else if (key === "systemMessageHistory" && Array.isArray(body[key])) partial.systemMessageHistory = body[key];
     else if (key === "ragThreshold" && typeof body[key] === "number") partial.ragThreshold = body[key];
     else if (key === "chatFontSize" && typeof body[key] === "number") partial.chatFontSize = body[key];
     else if (key === "is_system_admin" && typeof body[key] === "boolean") partial.is_system_admin = body[key];

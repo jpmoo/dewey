@@ -179,8 +179,6 @@ export function ChatView() {
   const [ragThreshold, setRagThreshold] = useState(RAG_THRESHOLD_DEFAULT);
   const [ragCollections, setRagCollections] = useState<string[]>([]);
   const [ragOptions, setRagOptions] = useState<string[]>([]);
-  const [systemMessage, setSystemMessage] = useState("");
-  const [systemHistory, setSystemHistory] = useState<string[]>([]);
   const [theme, setTheme] = useState("light");
   const [panelCollapsed, setPanelCollapsed] = useState(true);
   const [chatFontSize, setChatFontSize] = useState(CHAT_FONT_DEFAULT);
@@ -193,11 +191,9 @@ export function ChatView() {
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [dialogSystemMessage, setDialogSystemMessage] = useState(false);
   const [dialogCitedDocs, setDialogCitedDocs] = useState(false);
   const [complianceBlockModal, setComplianceBlockModal] = useState(false);
   const [dialogModelConnection, setDialogModelConnection] = useState(false);
-  const [dialogDeleteConfirm, setDialogDeleteConfirm] = useState(false);
   const [dialogNewConversationConfirm, setDialogNewConversationConfirm] = useState(false);
   const [dialogIntroSignOutConfirm, setDialogIntroSignOutConfirm] = useState(false);
   const [showIntroModal, setShowIntroModal] = useState(false);
@@ -215,8 +211,6 @@ export function ChatView() {
   /** For clarifying-question flow: original dilemma text when classifier returns multiple arcs */
   const [lastDilemmaForClarification, setLastDilemmaForClarification] = useState("");
   const [clarifyingInputValue, setClarifyingInputValue] = useState("");
-  const [systemMessageHistorySelect, setSystemMessageHistorySelect] = useState("");
-  const [systemMessageDraft, setSystemMessageDraft] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const citedListRef = useRef<HTMLUListElement>(null);
   const previousCitedOrderRef = useRef<string[]>([]);
@@ -269,13 +263,6 @@ export function ChatView() {
     setRagUrl((load("ragServerUrl", "") as string) || deriveRagUrl((load("ollamaUrl", DEFAULT_OLLAMA)) as string));
     setRagThreshold(parseFloat((load("ragThreshold", String(RAG_THRESHOLD_DEFAULT)) as string) || String(RAG_THRESHOLD_DEFAULT)));
     setRagCollections((load("ragCollections", []) as string[]));
-    setSystemMessage((load("systemMessage", "") as string));
-    try {
-      const h = JSON.parse(localStorage.getItem("systemMessageHistory") || "[]");
-      setSystemHistory(Array.isArray(h) ? h : []);
-    } catch {
-      setSystemHistory([]);
-    }
     const t = load("theme", "light") as string;
     setTheme(THEME_ORDER.includes(t) ? t : "light");
     const fs = parseInt((load("chatFontSize", String(CHAT_FONT_DEFAULT)) as string), 10);
@@ -300,8 +287,6 @@ export function ChatView() {
         if (typeof data.ragServerUrl === "string") setRagUrl(data.ragServerUrl);
         if (typeof data.ragThreshold === "number") setRagThreshold(data.ragThreshold);
         if (Array.isArray(data.ragCollections)) setRagCollections(data.ragCollections);
-        if (typeof data.systemMessage === "string") setSystemMessage(data.systemMessage);
-        if (Array.isArray(data.systemMessageHistory)) setSystemHistory(data.systemMessageHistory);
         if (typeof data.theme === "string" && THEME_ORDER.includes(data.theme)) setTheme(data.theme);
         if (typeof data.chatFontSize === "number" && data.chatFontSize >= CHAT_FONT_MIN && data.chatFontSize <= CHAT_FONT_MAX) setChatFontSize(data.chatFontSize);
         setUserPreferredName(typeof data.userPreferredName === "string" ? data.userPreferredName : "");
@@ -385,8 +370,6 @@ export function ChatView() {
       ragThreshold?: number;
       ragCollections?: string[];
       model?: string;
-      systemMessage?: string;
-      systemMessageHistory?: string[];
       theme?: string;
       chatFontSize?: number;
       userPreferredName?: string;
@@ -426,8 +409,6 @@ export function ChatView() {
         ragThreshold,
         ragCollections,
         model: selectedModel || undefined,
-        systemMessage,
-        systemMessageHistory: systemHistory,
         theme,
         chatFontSize,
         userPreferredName,
@@ -439,7 +420,7 @@ export function ChatView() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, selectedModel, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
+  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, selectedModel, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveSettings]);
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") {
@@ -447,8 +428,6 @@ export function ChatView() {
       saveToStorage("ragServerUrl", ragUrl);
       saveToStorage("ragThreshold", String(ragThreshold));
       saveToStorage("ragCollections", ragCollections);
-      saveToStorage("systemMessage", systemMessage);
-      saveToStorage("systemMessageHistory", JSON.stringify(systemHistory));
       saveToStorage("theme", theme);
       saveToStorage("chatFontSize", String(chatFontSize));
       saveToStorage("userPreferredName", userPreferredName);
@@ -456,7 +435,7 @@ export function ChatView() {
       saveToStorage("userRole", userRole);
       saveToStorage("userContext", userContext);
     }
-  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, systemMessage, systemHistory, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveToStorage]);
+  }, [sessionStatus, ollamaUrl, ragUrl, ragThreshold, ragCollections, theme, chatFontSize, userPreferredName, userSchoolOrOffice, userRole, userContext, saveToStorage]);
 
   const fetchRagCollections = useCallback(async () => {
     const url = ragUrl.trim();
@@ -847,291 +826,8 @@ Return your response as JSON in the following format:
       await runCoachingTurn(text);
       return;
     }
-
-    if (!selectedModel || !ollamaUrl.trim()) return;
-
-    setLoading(true);
-    const historyBlob = chatHistory
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n\n");
-    const screeningContent =
-      (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
-    const compliancePrompt =
-      COMPLIANCE_SYSTEM_PROMPT +
-      "\n\n--- Conversation to review ---\n\n" +
-      screeningContent;
-    try {
-      debugLog("[Dewey] AI call: compliance check", { model: selectedModel, promptLength: compliancePrompt.length });
-      const compRes = await fetch("/api/chat/ollama/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ollamaUrl: ollamaUrl.trim(),
-          model: selectedModel,
-          prompt: compliancePrompt,
-          stream: false,
-        }),
-      });
-      const compData = await compRes.json().catch(() => ({}));
-      const raw = ((compData.response ?? "") + "").trim();
-      const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
-      debugLog("[Dewey] AI response: compliance", { result: isBlock ? "BLOCK" : "ALLOW", rawSnippet: raw.slice(0, 300) });
-      if (isBlock) {
-        setComplianceBlockModal(true);
-        setLoading(false);
-        return;
-      }
-    } catch (e) {
-      debugLog("[Dewey] AI response: compliance", { error: e instanceof Error ? e.message : "Request failed" });
-      // On error, allow (do not block the user)
-    }
-
-    const userMsg = { role: "user" as const, content: text };
-    setChatHistory((prev) => [...prev, userMsg]);
-    if (optionalMessage == null) setInputValue("");
-    setLoading(true);
-
-    let ragContext = "";
-    const selectedRag = ragCollections.length > 0 && ragUrl.trim();
-    if (selectedRag) {
-      try {
-        // Include last exchange so RAG retrieval stays conversation-aware when topic shifts
-        const lastAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content ?? "";
-        const ragPrompt = lastAssistant.trim()
-          ? `${lastAssistant.trim()}\n\nUser: ${text}`
-          : text;
-        const ragBody = {
-          ragUrl: ragUrl.trim(),
-          prompt: ragPrompt,
-          group: ragCollections,
-          threshold: ragThreshold,
-          limit_chunk_role: true,
-        };
-        debugLog("[Dewey] AI call: RAG query", { promptLength: ragPrompt.length, group: ragCollections, threshold: ragThreshold });
-        const res = await fetch("/api/chat/rag/query", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(ragBody),
-        });
-        const rawResponseText = await res.text();
-        const data = rawResponseText ? (() => { try { return JSON.parse(rawResponseText); } catch { return {}; } })() : {};
-        const docListForLog = (data.documents ?? data.results ?? data.items ?? []) as unknown[];
-        const docCount = Array.isArray(docListForLog) ? docListForLog.length : 0;
-        debugLog("[Dewey] AI response: RAG", { status: res.status, docCount, rawPreview: rawResponseText.slice(0, 500) });
-        type RagSample = { text?: string; similarity?: number; source_url?: string; context_index?: number; context_total?: number };
-        type RagDocument = {
-          source_name?: string;
-          source_url?: string;
-          source_summary?: string;
-          sample_count?: number;
-          samples?: RagSample[];
-        };
-        // Prefer document-centric list (documents[].samples); results is a flat chunk list with no .samples
-        const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
-        const docArray = Array.isArray(docList) ? docList : [];
-        const withDoc: { doc: RagDocument; sample: RagSample }[] = [];
-        for (const doc of docArray) {
-          const samples = Array.isArray(doc.samples) ? doc.samples : [];
-          for (const sample of samples) {
-            withDoc.push({ doc, sample });
-          }
-        }
-        withDoc.sort((a, b) => (b.sample.similarity ?? 0) - (a.sample.similarity ?? 0));
-        const topChunks = withDoc.slice(0, 8);
-        if (topChunks.length > 0) {
-          const docKey = (d: RagDocument) => `${d.source_name ?? "Unknown"}\0${d.source_url ?? ""}`;
-          const byDoc = new Map<string, { doc: RagDocument; samples: RagSample[] }>();
-          for (const { doc, sample } of topChunks) {
-            const key = docKey(doc);
-            if (!byDoc.has(key)) byDoc.set(key, { doc, samples: [] });
-            byDoc.get(key)!.samples.push(sample);
-          }
-          const lines: string[] = ["Relevant context from documents:", ""];
-          const newCitations: { sourceName: string; url: string; similarity?: number }[] = [];
-          for (const { doc, samples } of byDoc.values()) {
-            const summary =
-              (doc.source_summary && String(doc.source_summary).trim()) ||
-              `Document: ${doc.source_name ?? "Unknown"}`;
-            const n = samples.length;
-            lines.push(`The following ${n} sample${n === 1 ? "" : "s"} come from a document with this summary: ${summary}`, "");
-            samples.forEach((s, i) => {
-              lines.push(`Sample ${i + 1} of ${n}: ${(s.text ?? "").trim()}`, "");
-            });
-            const sims = samples.map((s) => s.similarity).filter((x): x is number => typeof x === "number");
-            newCitations.push({
-              sourceName: doc.source_name ?? "Unknown",
-              url: doc.source_url ?? "#",
-              similarity: sims.length > 0 ? Math.max(...sims) : undefined,
-            });
-          }
-          ragContext = "\n\n" + lines.join("\n").trimEnd() + "\n\n";
-          const keys = new Set<string>();
-          for (const c of newCitations) {
-            const key = `${c.sourceName}\0${c.url}`;
-            keys.add(key);
-            everSeenCitationsRef.current.set(key, { sourceName: c.sourceName, url: c.url });
-          }
-          citationKeysByTurnRef.current.push(keys);
-          setCitations(newCitations);
-        } else {
-          setCitations([]);
-        }
-      } catch {
-        setCitations([]);
-      }
-    } else {
-      setCitations([]);
-    }
-
-    let fullPrompt = "";
-    if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
-    const userContextBlock: string[] = [];
-    if (userPreferredName.trim()) userContextBlock.push(`Preferred name: ${userPreferredName.trim()}`);
-    if (userSchoolOrOffice.trim()) userContextBlock.push(`School or office: ${userSchoolOrOffice.trim()}`);
-    if (userRole.trim()) userContextBlock.push(`Role: ${userRole.trim()}`);
-    if (userContext.trim()) userContextBlock.push(`Context about school/office: ${userContext.trim()}`);
-    if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
-    if (ragContext) fullPrompt += ragContext;
-    chatHistory.forEach((m) => {
-      fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
-    });
-    fullPrompt += `User: ${text}\n\nAssistant:`;
-
-    const contextWindow = modelContextLength ?? getFallbackContextLength(selectedModel);
-    const availableTokens = contextWindow - RESERVED_TOKENS;
-    const estimatedTokens = estimateTokens(fullPrompt);
-    if (estimatedTokens > availableTokens && chatHistory.length > 0) {
-      debugLog("[Dewey] Token limit approached:", estimatedTokens, ">", availableTokens, "available; summarizing history.");
-      setSummarizingStatus("summarizing");
-      const historyForSummary = chatHistory;
-      const historyText = historyForSummary.map((m) => `${m.role}: ${m.content}`).join("\n\n");
-      const summaryPrompt = `Please provide a concise summary of the following conversation history:\n\n${historyText}\n\nSummary:`;
-      try {
-        debugLog("[Dewey] AI call: history summarization", { model: selectedModel, promptLength: summaryPrompt.length });
-        const sumRes = await fetch("/api/chat/ollama/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ollamaUrl: ollamaUrl.trim(),
-            model: selectedModel,
-            prompt: summaryPrompt,
-            stream: false,
-          }),
-        });
-        const sumData = await sumRes.json().catch(() => ({}));
-        const summary = sumRes.ok && typeof sumData.response === "string" ? sumData.response.trim() : "";
-        debugLog("[Dewey] AI response: summarization", summary ? { summaryLength: summary.length, snippet: summary.slice(0, 200) } : { ok: sumRes.ok, error: (sumData as { error?: string }).error });
-        if (summary) {
-          const summaryMsg: { role: "user" | "assistant"; content: string } = {
-            role: "assistant",
-            content: `[Previous conversation summarized: ${summary}]`,
-          };
-          const newHistory = [summaryMsg, userMsg];
-          setChatHistory(newHistory);
-          setSummarizingStatus("done");
-          setTimeout(() => setSummarizingStatus(null), 3000);
-          fullPrompt = "";
-          if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
-          if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
-          if (ragContext) fullPrompt += ragContext;
-          newHistory.forEach((m) => {
-            fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
-          });
-          fullPrompt += `User: ${text}\n\nAssistant:`;
-          debugLog("[Dewey] Prompt rebuilt after summarization; estimated tokens:", estimateTokens(fullPrompt));
-        } else {
-          if (chatHistory.length > 10) {
-            const kept = chatHistory.slice(-5);
-            setChatHistory([...kept, userMsg]);
-            fullPrompt = "";
-            if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
-            if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
-            if (ragContext) fullPrompt += ragContext;
-            [...kept, userMsg].forEach((m) => {
-              fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
-            });
-            fullPrompt += `User: ${text}\n\nAssistant:`;
-          }
-          setSummarizingStatus("error");
-          setTimeout(() => setSummarizingStatus(null), 3000);
-        }
-      } catch {
-        if (chatHistory.length > 10) {
-          const kept = chatHistory.slice(-5);
-          setChatHistory([...kept, userMsg]);
-          fullPrompt = "";
-          if (systemMessage) fullPrompt += `System: ${systemMessage}\n\n`;
-          if (userContextBlock.length > 0) fullPrompt += `User context (use this when addressing the user and framing advice):\n${userContextBlock.join("\n")}\n\n`;
-          if (ragContext) fullPrompt += ragContext;
-          [...kept, userMsg].forEach((m) => {
-            fullPrompt += `${m.role === "user" ? "User" : "Assistant"}: ${m.content}\n\n`;
-          });
-          fullPrompt += `User: ${text}\n\nAssistant:`;
-        }
-        setSummarizingStatus("error");
-        setTimeout(() => setSummarizingStatus(null), 3000);
-      }
-    }
-
-    debugLog("[Dewey] AI call: main generate (streaming)", { model: selectedModel, promptLength: fullPrompt.length });
-    debugLog("[Dewey] Full prompt sent to model:", fullPrompt);
-
-    try {
-      const res = await fetch("/api/chat/ollama/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ollamaUrl: ollamaUrl.trim(),
-          model: selectedModel,
-          prompt: fullPrompt,
-          stream: true,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        debugLog("[Dewey] AI response: main (error)", { status: res.status, error: (err as { error?: string }).error });
-        setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(err as { error?: string }).error || res.status}` }]);
-        return;
-      }
-      const reader = res.body?.getReader();
-      if (!reader) {
-        debugLog("[Dewey] AI response: main (error)", { error: "No response stream" });
-        setChatHistory((prev) => [...prev, { role: "assistant", content: "Error: No response stream" }]);
-        return;
-      }
-      const decoder = new TextDecoder();
-      let assistantContent = "";
-      setChatHistory((prev) => [...prev, { role: "assistant", content: "" }]);
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        for (const line of chunk.split("\n")) {
-          if (!line.trim()) continue;
-          try {
-            const data = JSON.parse(line);
-            if (data.response) {
-              assistantContent += data.response;
-              setChatHistory((prev) => {
-                const next = [...prev];
-                next[next.length - 1] = { role: "assistant", content: assistantContent };
-                return next;
-              });
-            }
-          } catch {
-            // skip
-          }
-        }
-      }
-      debugLog("[Dewey] AI response: main (streaming complete)", { responseLength: assistantContent.length, snippet: assistantContent.slice(0, 400) });
-      if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    } catch (e) {
-      debugLog("[Dewey] AI response: main (exception)", { error: e instanceof Error ? e.message : "Request failed" });
-      setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
-    } finally {
-      setLoading(false);
-    }
-  }, [inputValue, loading, selectedModel, ollamaUrl, ragUrl, ragCollections, ragThreshold, systemMessage, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, modelContextLength, coachingArc, sessionFinished, runCoachingTurn]);
+    // No coaching session: send disabled (Ollama fallback removed; only arc classification + compliance use Ollama).
+  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, runCoachingTurn]);
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
@@ -1372,26 +1068,10 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
     }
   }, [clarifyingInputValue, lastDilemmaForClarification, selectedModel, ollamaUrl, userPreferredName, userRole, userSchoolOrOffice, userContext, runCoachingTurn]);
 
-  const saveSystemMessage = useCallback(() => {
-    const msg = systemMessageDraft.trim();
-    setSystemMessage(msg);
-    if (msg) {
-      const next = [msg, ...systemHistory.filter((m) => m !== msg)].slice(0, 20);
-      setSystemHistory(next);
-    }
-    setDialogSystemMessage(false);
-  }, [systemMessageDraft, systemHistory]);
-
-  const openSystemMessageDialog = useCallback(() => {
-    setSystemMessageDraft(systemMessage);
-    setSystemMessageHistorySelect("");
-    setDialogSystemMessage(true);
-  }, [systemMessage]);
-
   const fontDown = useCallback(() => setChatFontSize((f) => Math.max(CHAT_FONT_MIN, f - 2)), []);
   const fontUp = useCallback(() => setChatFontSize((f) => Math.min(CHAT_FONT_MAX, f + 2)), []);
 
-  const sendDisabled = sessionFinished || !selectedModel || !inputValue.trim() || loading;
+  const sendDisabled = sessionFinished || !coachingArc || !selectedModel || !inputValue.trim() || loading;
   const lastMsg = chatHistory[chatHistory.length - 1];
   const showTypingIndicator = loading && !(lastMsg?.role === "assistant" && (lastMsg?.content?.trim() ?? "") !== "");
 
@@ -1833,42 +1513,6 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         </div>
       )}
 
-      {dialogSystemMessage && (
-        <div className="chat-dialog-overlay" onClick={() => setDialogSystemMessage(false)}>
-          <div className="chat-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3 className="chat-dialog-title">System Message</h3>
-            <div className="chat-form-group" style={{ marginBottom: 12 }}>
-              <label className="chat-form-label">Load Previous</label>
-              <select
-                className="chat-form-select"
-                value={systemMessageHistorySelect}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSystemMessageHistorySelect(v);
-                  if (v !== "") setSystemMessageDraft(systemHistory[parseInt(v, 10)] ?? "");
-                }}
-              >
-                <option value="">-- Select a previous message --</option>
-                {systemHistory.map((msg, i) => (
-                  <option key={i} value={String(i)}>{msg.length > 60 ? msg.slice(0, 60) + "..." : msg}</option>
-                ))}
-              </select>
-            </div>
-            <textarea
-              className="chat-dialog-textarea"
-              placeholder="Enter system message..."
-              rows={8}
-              value={systemMessageDraft}
-              onChange={(e) => setSystemMessageDraft(e.target.value)}
-            />
-            <div className="chat-dialog-buttons">
-              <button type="button" className="chat-dialog-btn chat-dialog-btn-cancel" onClick={() => setDialogSystemMessage(false)}>Cancel</button>
-              <button type="button" className="chat-dialog-btn chat-dialog-btn-save" onClick={saveSystemMessage}>Save</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {dialogCitedDocs && (() => {
         const currentKeys = new Set(displayCitations.map((c) => `${c.sourceName}\0${c.url}`));
         const turns = citationKeysByTurnRef.current;
@@ -1985,18 +1629,6 @@ Reply with one key, or comma-separated keys (and optional QUESTION: line), or NO
         </div>
       )}
 
-      {dialogDeleteConfirm && (
-        <div className="chat-dialog-overlay" onClick={() => setDialogDeleteConfirm(false)}>
-          <div className="chat-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3 className="chat-dialog-title">Delete System Message</h3>
-            <p>Are you sure you want to delete this system message?</p>
-            <div className="chat-dialog-buttons">
-              <button type="button" className="chat-dialog-btn chat-dialog-btn-cancel" onClick={() => setDialogDeleteConfirm(false)}>Cancel</button>
-              <button type="button" className="chat-dialog-btn chat-dialog-btn-delete" onClick={() => { setDialogDeleteConfirm(false); setDialogSystemMessage(false); }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

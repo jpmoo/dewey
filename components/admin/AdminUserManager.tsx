@@ -314,66 +314,6 @@ export function AdminUserManager() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">System message (current)</label>
-                <textarea
-                  className="w-full border border-gray-300 rounded px-3 py-2 min-h-[120px] text-sm font-mono"
-                  placeholder="Enter system message for the model..."
-                  value={(editData.settings.systemMessage as string) ?? ""}
-                  onChange={(e) => updateEdit({ systemMessage: e.target.value })}
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Previous system messages</label>
-                  <button
-                    type="button"
-                    className="text-xs text-dewey-ink hover:underline"
-                    onClick={() => {
-                      const current = (editData.settings.systemMessage as string) ?? "";
-                      const history = (editData.settings.systemMessageHistory as string[] | undefined) ?? [];
-                      if (!current.trim()) return;
-                      updateEdit({ systemMessageHistory: [...history, current.trim()] });
-                    }}
-                  >
-                    Add current to history
-                  </button>
-                </div>
-                <div className="border border-gray-300 rounded px-3 py-2 max-h-48 overflow-y-auto space-y-2">
-                  {((editData.settings.systemMessageHistory as string[] | undefined) ?? []).length === 0 ? (
-                    <p className="text-sm text-gray-500">No previous messages.</p>
-                  ) : (
-                    ((editData.settings.systemMessageHistory as string[] | undefined) ?? []).map((msg, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm">
-                        <p className="flex-1 min-w-0 truncate text-gray-700" title={msg}>
-                          {msg.length > 80 ? msg.slice(0, 80) + "..." : msg}
-                        </p>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"
-                            onClick={() => updateEdit({ systemMessage: msg })}
-                          >
-                            Load
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-xs border border-red-200 text-red-700 rounded hover:bg-red-50"
-                            onClick={() => {
-                              const history = (editData.settings.systemMessageHistory as string[] | undefined) ?? [];
-                              updateEdit({
-                                systemMessageHistory: history.filter((_, j) => j !== i),
-                              });
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Preferred name</label>
                 <input
                   type="text"

@@ -9,7 +9,6 @@ const APPLY_TO_ALL_KEYS: string[] = [
   "DEWEY_DEFAULT_RAG_SERVER_URL",
   "DEWEY_DEFAULT_RAG_THRESHOLD",
   "DEWEY_DEFAULT_RAG_COLLECTIONS",
-  "DEWEY_DEFAULT_SYSTEM_MESSAGE",
   "DEWEY_DEFAULT_MODEL",
 ];
 
@@ -88,30 +87,19 @@ export function AdminSettings() {
       </p>
       <div className="space-y-3 max-w-xl">
         {env.filter((e) => e.key !== "DEWEY_DEBUG_CONSOLE").map((e) => {
-          const isSystemMessage = e.key === "DEWEY_DEFAULT_SYSTEM_MESSAGE";
           const canApplyToAll = APPLY_TO_ALL_KEYS.includes(e.key);
           return (
             <div key={e.key}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 {e.label ?? e.key}
               </label>
-              {isSystemMessage ? (
-                <textarea
-                  rows={6}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y min-h-[120px]"
-                  value={draft[e.key] ?? e.value}
-                  onChange={(ev) => updateDraft(e.key, ev.target.value)}
-                  placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
-                />
-              ) : (
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                  value={draft[e.key] ?? e.value}
-                  onChange={(ev) => updateDraft(e.key, ev.target.value)}
-                  placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
-                />
-              )}
+              <input
+                type="text"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                value={draft[e.key] ?? e.value}
+                onChange={(ev) => updateDraft(e.key, ev.target.value)}
+                placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
+              />
               {canApplyToAll && (
                 <label className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
                   <input

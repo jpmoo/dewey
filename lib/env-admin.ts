@@ -10,7 +10,6 @@ export const ADMIN_ENV_KEYS: { key: string; obscure: boolean; label?: string }[]
   { key: "DEWEY_DEFAULT_RAG_SERVER_URL", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_THRESHOLD", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_COLLECTIONS", obscure: false },
-  { key: "DEWEY_DEFAULT_SYSTEM_MESSAGE", obscure: false },
   { key: "DEWEY_DEFAULT_MODEL", obscure: false },
   { key: "DEWEY_DEBUG_CONSOLE", obscure: false, label: "Show debug messages in console (on/off)" },
 ];

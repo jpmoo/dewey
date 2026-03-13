@@ -16,7 +16,6 @@ const ENV_KEY_TO_SETTINGS: Record<string, keyof ChatSettings> = {
   DEWEY_DEFAULT_RAG_SERVER_URL: "ragServerUrl",
   DEWEY_DEFAULT_RAG_THRESHOLD: "ragThreshold",
   DEWEY_DEFAULT_RAG_COLLECTIONS: "ragCollections",
-  DEWEY_DEFAULT_SYSTEM_MESSAGE: "systemMessage",
   DEWEY_DEFAULT_MODEL: "model",
 };
 
@@ -32,8 +31,6 @@ function envValueToSetting(key: string, value: string): unknown {
     }
     case "DEWEY_DEFAULT_RAG_COLLECTIONS":
       return value.split(",").map((s) => s.trim()).filter(Boolean);
-    case "DEWEY_DEFAULT_SYSTEM_MESSAGE":
-      return value.replace(/\\n/g, "\n") || undefined;
     default:
       return value;
   }
