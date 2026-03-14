@@ -196,8 +196,8 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
     "When the excerpts below relate to the leader's situation or question, use specific details from them and cite the source by name in your response (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). Do not ignore relevant excerpts.",
     "",
   ];
-  for (const [sourceName, list] of bySource.entries()) {
-    lines.push(`**Source: ${sourceName}**");
+  for (const [sourceName, list] of Array.from(bySource.entries())) {
+    lines.push(`**Source: ${sourceName}**`);
     for (const c of list) {
       lines.push(`[${c.num}] ${c.text}`);
     }
