@@ -934,7 +934,7 @@ Return your response as JSON in the following format:
     if (!text || loading) return;
 
     const inCoachingMode = coachingArc && !sessionFinished;
-    const inOpenMode = !coachingArc && arcClassificationResult?.arc === "NONE";
+    const inOpenMode = !coachingArc && arcClassificationResult?.arc === "open_conversation";
 
     if (inCoachingMode) {
       if (!selectedModel || !ollamaUrl.trim()) {
@@ -1052,13 +1052,14 @@ Return your response as JSON in the following format:
       const classificationPrompt = `You are classifying a school leader's dilemma into one of the following coaching arcs.
 
 IMPORTANT — When to choose open_conversation:
+- Prefer open_conversation when the user wants to explore a topic (e.g. "explore pros and cons", "as it relates to our strategic framework" or "Portrait of a Graduate") without a clear problem to fix or change to roll out.
 - Prefer open_conversation when the user is catching up, sharing generally, thinking out loud, or when their opening is vague or does not clearly match a structured arc (no specific problem, no change initiative, no interpersonal situation).
-- Do NOT force a structured arc when the dilemma is general. If in doubt between a structured arc and open conversation, choose open_conversation.
+- Do NOT force a structured arc when the dilemma is general or exploratory. If in doubt between a structured arc and open conversation, choose open_conversation.
 
 Rules:
 - If one arc clearly fits best (including open_conversation), respond with only that arc's reply key (the exact snake_case value shown).
 - If two or more structured arcs could fit and you're unsure, respond with those keys separated by commas. You MUST then add a new line starting with QUESTION: and one short, situation-specific clarifying question (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?). Do not repeat arc names; ask in plain language.
-- If the dilemma clearly fits no arc (including open_conversation), respond with NONE.
+- If no other arc clearly fits, respond with open_conversation. Never respond with NONE.
 
 ARCS:
 ${arcList}
@@ -1066,7 +1067,7 @@ ${arcList}
 USER'S DILEMMA AND CONTEXT:
 ${userBlock}
 
-Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply, or NONE.`;
+Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply. If nothing else fits, reply open_conversation.`;
 
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1101,7 +1102,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       } else if (keys.length === 1) {
         arc = keys[0];
       } else if (singleKey === "none" || /^none$/i.test(raw)) {
-        arc = "NONE";
+        arc = "open_conversation";
       } else if (validNames.has(singleKey)) {
         arc = singleKey;
       } else if (allKeysInRaw.length >= 1) {
@@ -1109,6 +1110,10 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         if (allKeysInRaw.length > 1) selectedArcs = Array.from(new Set(allKeysInRaw));
       } else {
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
+      }
+      if (arc === "ERROR" || arc.startsWith("UNKNOWN")) {
+        arc = "open_conversation";
+        selectedArcs = undefined;
       }
       let displayQuestion: string | undefined;
       if (selectedArcs && selectedArcs.length > 1) {
@@ -1133,13 +1138,17 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question: displayQuestion, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(text);
 
-      const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
+      const validSingleArc = arc && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
       if (validSingleArc) {
         try {
           const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
           if (!defRes.ok) return;
           const defData = (await defRes.json()) as { arcs?: { machine_name: string; phase_sequence: string[] }[] };
-          const arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
+          let arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
+          if (!arcDef?.phase_sequence?.length) {
+            arcDef = (defData.arcs ?? []).find((a) => a.machine_name === "open_conversation");
+            if (arcDef?.phase_sequence?.length) arc = "open_conversation";
+          }
           if (arcDef?.phase_sequence?.length) {
             setCoachingArc(arc);
             setPhaseSequence(arcDef.phase_sequence);
@@ -1152,9 +1161,6 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         } catch {
           // arc def or first turn failed; user still sees classification result
         }
-      } else if (arc === "NONE") {
-        setChatHistory((prev) => [...prev, { role: "user", content: text }]);
-        await runOpenConversationTurn(text);
       }
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
@@ -1189,7 +1195,11 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma. The text below includes their original dilemma AND their clarification. You MUST choose exactly ONE arc. Do not return multiple keys. Do not add a QUESTION line. Reply with only the single arc's reply key (exact snake_case value), or NONE if no arc fits. Prefer open_conversation if the clarification still does not point to a specific structured arc.
+      const classificationPrompt = `You are classifying a school leader's dilemma. The text below includes their original dilemma AND their clarification. Reconsider ALL arcs from scratch — do not limit yourself to the arcs that were suggested before. The clarification may signal that a different arc fits better (e.g. "Exploring" or "Just exploring" strongly suggests open_conversation, not a structured problem-solving arc).
+
+You MUST choose exactly ONE arc. Do not return multiple keys. Do not add a QUESTION line. Reply with only the single arc's reply key (exact snake_case value). If no other arc fits, reply open_conversation. Never reply NONE.
+- If the clarification is exploratory (e.g. "Exploring", "Just exploring", "No specific problem", "Open discussion"), choose open_conversation unless the full dilemma clearly describes a structured problem or change initiative.
+- Prefer open_conversation when the leader wants to explore a topic (e.g. pros and cons, how something relates to a framework or document) without yet having a problem to fix or a change to roll out.
 
 ARCS:
 ${arcList}
@@ -1197,7 +1207,7 @@ ${arcList}
 USER'S DILEMMA AND CLARIFICATION:
 ${userBlock}
 
-Reply with exactly one key, or NONE.`;
+Reply with exactly one key. If nothing else fits, reply open_conversation.`;
 
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1222,7 +1232,7 @@ Reply with exactly one key, or NONE.`;
         arc = keys[0];
         selectedArcs = undefined;
       } else if (singleKey === "none" || /^none$/i.test(raw)) {
-        arc = "NONE";
+        arc = "open_conversation";
         selectedArcs = undefined;
       } else if (validNames.has(singleKey)) {
         arc = singleKey;
@@ -1234,16 +1244,23 @@ Reply with exactly one key, or NONE.`;
         arc = raw ? `UNKNOWN: ${firstLine.slice(0, 80)}` : "ERROR";
         selectedArcs = undefined;
       }
+      if (arc === "ERROR" || arc.startsWith("UNKNOWN")) {
+        arc = "open_conversation";
+      }
       setArcClassificationResult({ arc, arcs: undefined, question: undefined, raw: raw.slice(0, 400) });
       setLastDilemmaForClarification(enrichedDilemma);
 
-      const validSingleArc = arc && arc !== "NONE" && arc !== "ERROR" && !arc.startsWith("UNKNOWN");
+      const validSingleArc = arc && arc !== "ERROR" && !arc.startsWith("UNKNOWN");
       if (validSingleArc) {
         try {
           const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
           if (!defRes.ok) return;
           const defData = (await defRes.json()) as { arcs?: { machine_name: string; phase_sequence: string[] }[] };
-          const arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
+          let arcDef = (defData.arcs ?? []).find((a) => a.machine_name === arc);
+          if (!arcDef?.phase_sequence?.length) {
+            arcDef = (defData.arcs ?? []).find((a) => a.machine_name === "open_conversation");
+            if (arcDef?.phase_sequence?.length) arc = "open_conversation";
+          }
           if (arcDef?.phase_sequence?.length) {
             setCoachingArc(arc);
             setPhaseSequence(arcDef.phase_sequence);
@@ -1268,7 +1285,7 @@ Reply with exactly one key, or NONE.`;
   const fontUp = useCallback(() => setChatFontSize((f) => Math.min(CHAT_FONT_MAX, f + 2)), []);
 
   const inCoachingMode = coachingArc && !sessionFinished;
-  const inOpenMode = !coachingArc && arcClassificationResult?.arc === "NONE";
+  const inOpenMode = !coachingArc && arcClassificationResult?.arc === "open_conversation";
   const sendDisabled = !(inCoachingMode || inOpenMode) || !selectedModel || !inputValue.trim() || loading;
   const lastMsg = chatHistory[chatHistory.length - 1];
   const showTypingIndicator = loading && !(lastMsg?.role === "assistant" && (lastMsg?.content?.trim() ?? "") !== "");

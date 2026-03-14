@@ -143,9 +143,15 @@
     {
       "name": "open_conversation",
       "display_name": "Open conversation",
-      "description": "General catch-up, chit-chat, or when the leader's input does not clearly fit a structured coaching arc. Choose this when there is no specific problem to solve, no change initiative, no interpersonal conflict, and no clear coaching structure that fits. Use for: checking in, sharing updates, thinking out loud, or vague/general openings that do not match other arcs.",
+      "description": "The leader wants to explore a topic, reflect with a coach, or have an open discussion without a clear problem to solve or change to roll out. Choose this for: exploring pros and cons of a topic (e.g. technology use, policy) as it relates to frameworks or documents (strategic plan, Portrait of a Graduate, etc.); general catch-up or thinking out loud; checking in; or when the opening is exploratory or does not clearly fit a structured arc (no specific problem, no change initiative, no interpersonal conflict). Do NOT force a problem-of-practice or change-initiative arc when the leader is exploring or relating a topic to documents.",
       "phase_sequence": ["chit_chat"],
       "diagnostic_markers": [
+        "I want to explore",
+        "Explore pros and cons",
+        "Exploring",
+        "As it relates to our strategic framework",
+        "Portrait of a Graduate",
+        "Relate to our framework",
         "Just checking in",
         "Catch up",
         "No specific problem",
@@ -156,7 +162,7 @@
         "Just wanted to connect",
         "Nothing urgent",
         "Running something by you",
-        "Open-ended or vague opening that does not match other arcs"
+        "Open-ended or exploratory opening that does not match other arcs"
       ]
     }
   ]
