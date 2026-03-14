@@ -35,7 +35,7 @@ Claude API key stored in `.env.local`. Never committed to source control.
 
 ## Data Files
 
-### phases.json
+### coaching_phases.json
 Defines the atomic conversation phase LEGOs. Each phase is reusable across multiple arcs.
 
 **Fields per phase:**
