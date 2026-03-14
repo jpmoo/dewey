@@ -62,6 +62,13 @@
       "objective": "Help the leader surface and examine the mental models and beliefs underlying their current approach. Identify which assumptions are driving decisions and test whether they still hold.",
       "ending_criteria": "The leader has identified at least one core assumption, evaluated the evidence for and against it, and decided whether to revise their thinking or proceed with confidence.",
       "callback_invitation": null
+    },
+    {
+      "machine_name": "chit_chat",
+      "display_name": "Open conversation",
+      "objective": "Have an open, unstructured conversation. Listen, reflect, and respond supportively. No fixed agenda or coaching structure.",
+      "ending_criteria": "This phase has no fixed completion. Do not mark phase_complete; keep the conversation going as long as it is useful.",
+      "callback_invitation": null
     }
   ]
 }

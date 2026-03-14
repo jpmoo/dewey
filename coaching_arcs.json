@@ -139,6 +139,25 @@
         "What if the problem is not what I thought it was",
         "The results are telling me something I did not expect"
       ]
+    },
+    {
+      "name": "open_conversation",
+      "display_name": "Open conversation",
+      "description": "General catch-up, chit-chat, or when the leader's input does not clearly fit a structured coaching arc. Choose this when there is no specific problem to solve, no change initiative, no interpersonal conflict, and no clear coaching structure that fits. Use for: checking in, sharing updates, thinking out loud, or vague/general openings that do not match other arcs.",
+      "phase_sequence": ["chit_chat"],
+      "diagnostic_markers": [
+        "Just checking in",
+        "Catch up",
+        "No specific problem",
+        "General update",
+        "Wanted to talk something through",
+        "Thinking out loud",
+        "Not sure where to start",
+        "Just wanted to connect",
+        "Nothing urgent",
+        "Running something by you",
+        "Open-ended or vague opening that does not match other arcs"
+      ]
     }
   ]
 }

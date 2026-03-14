@@ -157,6 +157,31 @@ function stripChunkLinks(text: string): string {
 
 type NumberedChunk = { num: number; text: string; sourceName: string; url: string };
 
+/** Normalize RAG API response into a flat list of { text, sourceName, url }. Handles documents[].samples[] and fallbacks (documents[].content, chunks[]). */
+function normalizeRagResponse(data: Record<string, unknown>): { text: string; sourceName: string; url: string }[] {
+  const flat: { text: string; sourceName: string; url: string }[] = [];
+  const docList = (data.documents ?? data.results ?? data.items ?? data.chunks ?? []) as unknown[];
+  if (!Array.isArray(docList)) return flat;
+  for (const doc of docList) {
+    const d = doc as Record<string, unknown>;
+    const sourceName = (typeof d.source_name === "string" ? d.source_name : (d.metadata as Record<string, unknown>)?.source as string) ?? (d.name as string) ?? "Unknown";
+    const sourceUrl = (typeof d.source_url === "string" ? d.source_url : (d.metadata as Record<string, unknown>)?.url as string) ?? (d.url as string) ?? "#";
+    const samples = Array.isArray(d.samples) ? d.samples : [];
+    if (samples.length > 0) {
+      for (const s of samples) {
+        const t = (s as Record<string, unknown>).text ?? (s as Record<string, unknown>).content;
+        const text = typeof t === "string" ? t.trim() : "";
+        if (text) flat.push({ text, sourceName, url: (s as Record<string, unknown>).source_url as string ?? sourceUrl });
+      }
+    } else {
+      const content = d.content ?? d.text;
+      const text = typeof content === "string" ? content.trim() : "";
+      if (text) flat.push({ text, sourceName, url: sourceUrl });
+    }
+  }
+  return flat;
+}
+
 /** Format RAG chunks for the model: grouped by source, with instruction to reference sources by name. */
 function formatRagContextBySource(chunks: NumberedChunk[]): string {
   if (chunks.length === 0) return "";
@@ -167,7 +192,8 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
     bySource.get(key)!.push(c);
   }
   const lines: string[] = [
-    "Relevant context from the knowledge base (grouped by source). You may and should reference these sources by name when relevant (e.g. \"The Strategic Plan notes that...\" or \"According to the district policy...\").",
+    "--- Knowledge base excerpts (use these when relevant) ---",
+    "When the excerpts below relate to the leader's situation or question, use specific details from them and cite the source by name in your response (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). Do not ignore relevant excerpts.",
     "",
   ];
   for (const [sourceName, list] of bySource.entries()) {
@@ -706,18 +732,8 @@ export function ChatView() {
               limit_chunk_role: true,
             }),
           });
-          const data = await res.json().catch(() => ({}));
-          type RagSample = { text?: string; similarity?: number; source_url?: string };
-          type RagDocument = { source_name?: string; source_url?: string; samples?: RagSample[] };
-          const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
-          const flat: { text: string; sourceName: string; url: string }[] = [];
-          for (const doc of Array.isArray(docList) ? docList : []) {
-            const samples = Array.isArray(doc.samples) ? doc.samples : [];
-            for (const s of samples) {
-              const t = (s.text ?? "").trim();
-              if (t) flat.push({ text: t, sourceName: doc.source_name ?? "Unknown", url: doc.source_url ?? s.source_url ?? "#" });
-            }
-          }
+          const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+          const flat = normalizeRagResponse(data);
           const topN = flat.slice(0, 10);
           numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
         } catch {
@@ -727,7 +743,7 @@ export function ChatView() {
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When relevant context from the knowledge base is provided below, you may and should reference it by source name in your response (e.g. "The Strategic Plan notes that..." or "According to the district policy...").
+When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts.
 
 Keep the conversation moving: ask one or two focused questions per turn when possible; avoid belaboring. When the leader has given enough for the phase (they have addressed the objective and the ending criteria below are substantially met), mark phase_complete true and move on — do not require multiple rounds of probing.
 
@@ -843,18 +859,8 @@ Return your response as JSON in the following format:
               limit_chunk_role: true,
             }),
           });
-          const data = await res.json().catch(() => ({}));
-          type RagSample = { text?: string; similarity?: number; source_url?: string };
-          type RagDocument = { source_name?: string; source_url?: string; samples?: RagSample[] };
-          const docList = (data.documents ?? data.results ?? data.items ?? []) as RagDocument[];
-          const flat: { text: string; sourceName: string; url: string }[] = [];
-          for (const doc of Array.isArray(docList) ? docList : []) {
-            const samples = Array.isArray(doc.samples) ? doc.samples : [];
-            for (const s of samples) {
-              const t = (s.text ?? "").trim();
-              if (t) flat.push({ text: t, sourceName: doc.source_name ?? "Unknown", url: doc.source_url ?? s.source_url ?? "#" });
-            }
-          }
+          const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+          const flat = normalizeRagResponse(data);
           const topN = flat.slice(0, 10);
           numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
         } catch {
@@ -864,7 +870,7 @@ Return your response as JSON in the following format:
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When relevant context from the knowledge base is provided below, you may and should reference it by source name in your response (e.g. "The Strategic Plan notes that..." or "According to the district policy...").
+When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts.
 
 Return your response as JSON in the following format:
 {
@@ -1043,11 +1049,16 @@ Return your response as JSON in the following format:
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma into one or more of the following coaching arcs. Match the dilemma using only the description and diagnostic markers.
+      const classificationPrompt = `You are classifying a school leader's dilemma into one of the following coaching arcs.
 
-- If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
-- If two or more arcs could fit and you're unsure, respond with those keys separated by commas. You MUST then add a new line starting with QUESTION: and one short, situation-specific clarifying question that refers to their dilemma (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?). Do not repeat arc names; ask in plain language tailored to what they shared.
-- If no arc fits, respond with NONE.
+IMPORTANT — When to choose open_conversation:
+- Prefer open_conversation when the user is catching up, sharing generally, thinking out loud, or when their opening is vague or does not clearly match a structured arc (no specific problem, no change initiative, no interpersonal situation).
+- Do NOT force a structured arc when the dilemma is general. If in doubt between a structured arc and open conversation, choose open_conversation.
+
+Rules:
+- If one arc clearly fits best (including open_conversation), respond with only that arc's reply key (the exact snake_case value shown).
+- If two or more structured arcs could fit and you're unsure, respond with those keys separated by commas. You MUST then add a new line starting with QUESTION: and one short, situation-specific clarifying question (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?). Do not repeat arc names; ask in plain language.
+- If the dilemma clearly fits no arc (including open_conversation), respond with NONE.
 
 ARCS:
 ${arcList}
@@ -1178,7 +1189,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         `School/office: ${userSchoolOrOffice.trim()}`,
         `Context: ${userContext.trim()}`,
       ].join("\n");
-      const classificationPrompt = `You are classifying a school leader's dilemma. The text below includes their original dilemma AND their clarification — the user has already answered a clarifying question. You MUST choose exactly ONE arc that best fits. Do not return multiple keys. Do not add a QUESTION line. Reply with only the single arc's reply key (exact snake_case value), or NONE if no arc fits.
+      const classificationPrompt = `You are classifying a school leader's dilemma. The text below includes their original dilemma AND their clarification. You MUST choose exactly ONE arc. Do not return multiple keys. Do not add a QUESTION line. Reply with only the single arc's reply key (exact snake_case value), or NONE if no arc fits. Prefer open_conversation if the clarification still does not point to a specific structured arc.
 
 ARCS:
 ${arcList}
