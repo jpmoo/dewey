@@ -122,7 +122,7 @@ export function AdminSettings() {
             onChange={(e) => setDebugConsole(e.target.checked)}
           />
           <label htmlFor="debug-console" className="text-sm font-medium text-gray-700">
-            Show debug messages in console
+            Show debug messages and info
           </label>
         </div>
       </div>

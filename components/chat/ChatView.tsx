@@ -273,6 +273,9 @@ export function ChatView() {
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
   const debugConsoleRef = useRef(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(() =>
+    typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("dewey_debug") === "1" || localStorage.getItem("DEWEY_DEBUG") === "1")
+  );
   /** Client override: ?dewey_debug=1 in URL or localStorage DEWEY_DEBUG=1 */
   const debugOverride = typeof window !== "undefined" && (
     (typeof URLSearchParams !== "undefined" && new URLSearchParams(window.location.search).get("dewey_debug") === "1") ||
@@ -534,11 +537,12 @@ export function ChatView() {
       .then((data: { debugConsole?: boolean } | null) => {
         const enabled = debugOverride || !!data?.debugConsole;
         debugConsoleRef.current = enabled;
+        setShowDebugInfo(enabled);
         if (enabled) {
           console.log("[Dewey] Debug console ON — logging all AI calls and responses. (Override: add ?dewey_debug=1 to the URL or set localStorage DEWEY_DEBUG=1)");
         }
       })
-      .catch(() => { debugConsoleRef.current = debugOverride; });
+      .catch(() => { debugConsoleRef.current = debugOverride; setShowDebugInfo(!!debugOverride); });
   }, [debugOverride]);
 
   useEffect(() => {
@@ -1451,7 +1455,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
           <div className="chat-container" ref={containerRef}>
             {chatHistory.map((msg, i) => (
               <div key={i} className={`chat-message ${msg.role}`}>
-                {msg.role === "assistant" && (msg.arc || msg.phase) && (
+                {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase) && (
                   <div className="chat-turn-context" role="status">
                     {[msg.arc, msg.phase].filter(Boolean).join(" · ")}
                   </div>
@@ -1769,7 +1773,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
               )}
               {previouslyCited.length > 0 && (
                 <div className="cited-docs-previously">
-                  <p className="cited-docs-previously-heading">Previously cited (no longer in current results)</p>
+                  <p className="cited-docs-previously-heading">Previously cited as relevant to this conversation:</p>
                   <ul className="cited-docs-list cited-docs-list-dim" aria-label="Previously cited resources">
                     {previouslyCited.map((entry) => (
                       <li key={entry.key}>

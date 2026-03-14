@@ -11,7 +11,7 @@ export const ADMIN_ENV_KEYS: { key: string; obscure: boolean; label?: string }[]
   { key: "DEWEY_DEFAULT_RAG_THRESHOLD", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_COLLECTIONS", obscure: false },
   { key: "DEWEY_DEFAULT_MODEL", obscure: false },
-  { key: "DEWEY_DEBUG_CONSOLE", obscure: false, label: "Show debug messages in console (on/off)" },
+  { key: "DEWEY_DEBUG_CONSOLE", obscure: false, label: "Show debug messages and info (on/off)" },
 ];
 
 function getEnvLocalPath(): string {
