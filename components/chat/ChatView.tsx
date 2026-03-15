@@ -47,6 +47,8 @@ Do NOT flag or block:
 
 Only flag if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
 
+When in doubt, ALLOW.
+
 Output format:
 
 Return ONLY one of the following:
@@ -961,7 +963,7 @@ Return your response as JSON in the following format:
         const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false }),
+          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false, options: { temperature: 0 } }),
         });
         const compData = await compRes.json().catch(() => ({}));
         const raw = ((compData.response ?? "") + "").trim();
@@ -991,7 +993,7 @@ Return your response as JSON in the following format:
         const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false }),
+          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false, options: { temperature: 0 } }),
         });
         const compData = await compRes.json().catch(() => ({}));
         const raw = ((compData.response ?? "") + "").trim();

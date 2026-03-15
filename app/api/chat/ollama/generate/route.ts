@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   const model = body.model;
   const prompt = body.prompt;
   const stream = body.stream !== false;
+  const options = body.options && typeof body.options === "object" ? body.options : undefined;
   if (!url || !model || prompt === undefined) {
     return NextResponse.json(
       { error: "ollamaUrl, model, and prompt required" },
@@ -13,10 +14,12 @@ export async function POST(request: NextRequest) {
     );
   }
   try {
+    const payload: Record<string, unknown> = { model, prompt, stream };
+    if (options && Object.keys(options).length > 0) payload.options = options;
     const res = await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
