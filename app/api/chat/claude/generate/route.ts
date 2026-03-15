@@ -17,9 +17,10 @@ function parseCoachingJson(raw: string): ClaudeCoachingResponse | null {
   try {
     const data = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     const response = typeof data.response === "string" ? data.response : "";
-    const rag_sources_used = Array.isArray(data.rag_sources_used)
-      ? (data.rag_sources_used as number[]).filter((n) => typeof n === "number")
-      : [];
+    const rawRag = Array.isArray(data.rag_sources_used) ? data.rag_sources_used : [];
+    const rag_sources_used = rawRag
+      .map((n) => (typeof n === "number" ? n : parseInt(String(n), 10)))
+      .filter((n) => !Number.isNaN(n) && n >= 1);
     const phase_complete = typeof data.phase_complete === "boolean" ? data.phase_complete : false;
     const phase_complete_reasoning = typeof data.phase_complete_reasoning === "string" ? data.phase_complete_reasoning : "";
     return { response, rag_sources_used, phase_complete, phase_complete_reasoning };

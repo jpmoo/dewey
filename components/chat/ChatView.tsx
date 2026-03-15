@@ -806,7 +806,9 @@ Return your response as JSON in the following format:
         setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcForMessage, phase: phaseLabelForMessage }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
-        for (const idx of ragSourcesUsed) {
+        for (const rawIdx of ragSourcesUsed) {
+          const idx = typeof rawIdx === "number" ? rawIdx : parseInt(String(rawIdx), 10);
+          if (Number.isNaN(idx) || idx < 1) continue;
           const c = numberedChunks.find((x) => x.num === idx);
           if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
         }
@@ -917,8 +919,10 @@ Return your response as JSON in the following format:
         setChatHistory((prev) => [...prev, { role: "assistant", content: response }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
-        for (const i of ragSourcesUsed) {
-          const c = numberedChunks.find((x) => x.num === i);
+        for (const rawIdx of ragSourcesUsed) {
+          const idx = typeof rawIdx === "number" ? rawIdx : parseInt(String(rawIdx), 10);
+          if (Number.isNaN(idx) || idx < 1) continue;
+          const c = numberedChunks.find((x) => x.num === idx);
           if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
         }
         setCitations(Array.from(citedSources.values()).map((v) => ({ sourceName: v.sourceName, url: v.url })));
