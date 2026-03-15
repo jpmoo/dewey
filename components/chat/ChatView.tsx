@@ -44,6 +44,7 @@ Do NOT flag or block:
 - Generic discussions of personnel management or student support without identifiable details.
 - Aggregate or non-identifiable demographic data (e.g., absenteeism or outcomes by race, ethnicity, or other groups at school/district level with no individual students named or identifiable).
 - Discussing "rumors," community perceptions, or messaging challenges as a leadership topic (how to address rumors, communicate with the community, or support affected groups). Only block if the user is asking to disclose or discuss specific confidential investigations, identifiable individuals, or non-public case details.
+- Discussion of racism, bias, disproportionality, equity, or inclusion as leadership or policy topics (e.g., discipline disparities, achievement gaps, supporting marginalized groups, addressing discrimination). Only block if the user is sharing or seeking identifiable individuals, confidential case details, or privileged legal strategy.
 
 Only flag if the conversation includes or is likely to elicit specific, identifiable, or confidential case-level information.
 
