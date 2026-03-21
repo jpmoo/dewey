@@ -11,6 +11,11 @@ export const ADMIN_ENV_KEYS: { key: string; obscure: boolean; label?: string }[]
   { key: "DEWEY_DEFAULT_RAG_THRESHOLD", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_COLLECTIONS", obscure: false },
   { key: "DEWEY_DEFAULT_MODEL", obscure: false },
+  {
+    key: "ANTHROPIC_API_KEY",
+    obscure: true,
+    label: "Anthropic API key (Claude — https://api.anthropic.com)",
+  },
   { key: "DEWEY_DEBUG_CONSOLE", obscure: false, label: "Show debug messages and info (on/off)" },
 ];
 

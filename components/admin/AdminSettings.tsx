@@ -84,7 +84,10 @@ export function AdminSettings() {
     <section className="mb-8">
       <h2 className="text-lg font-semibold mb-3">Settings</h2>
       <p className="text-sm text-dewey-mute mb-4">
-        Default settings for new users (saved to .env.local and applied immediately).
+        Defaults for new users and server configuration (saved to <code className="text-xs bg-gray-100 px-1 rounded">.env.local</code> and{" "}
+        <code className="text-xs bg-gray-100 px-1 rounded">data/dewey-runtime.json</code> where needed). The Anthropic key is used for Claude coaching (
+        <code className="text-xs bg-gray-100 px-1 rounded">api.anthropic.com</code>
+        ).
       </p>
       <div className="space-y-3 max-w-xl">
         {env.filter((e) => e.key !== "DEWEY_DEBUG_CONSOLE").map((e) => {
@@ -95,11 +98,12 @@ export function AdminSettings() {
                 {e.label ?? e.key}
               </label>
               <input
-                type="text"
+                type={e.obscured ? "password" : "text"}
                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                 value={draft[e.key] ?? e.value}
                 onChange={(ev) => updateDraft(e.key, ev.target.value)}
                 placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
+                autoComplete={e.obscured ? "off" : undefined}
               />
               {canApplyToAll && (
                 <label className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">

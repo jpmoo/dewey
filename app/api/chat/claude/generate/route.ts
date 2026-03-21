@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getRuntimeEnvSync } from "@/lib/env-admin";
 
 const CLAUDE_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
@@ -30,8 +31,8 @@ function parseCoachingJson(raw: string): ClaudeCoachingResponse | null {
 }
 
 export async function POST(request: NextRequest) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key?.trim()) {
+  const key = getRuntimeEnvSync("ANTHROPIC_API_KEY")?.trim();
+  if (!key) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
   }
   const body = await request.json().catch(() => ({}));
