@@ -1843,7 +1843,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
           <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">Compliance notice</h3>
             <p>
-              The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Remember that Dewey does not save anything about your conversation, so you are responsible for any required retention. Also note that Dewey is only meant to be a reflective partner, not an authority for direct answers—particularly in areas like this.
+              The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Therefore, I cannot continue. Remember that Dewey is only meant to be a reflective partner to push your thinking, not an authority for direct answers—particularly in areas like this. If the question or concern you are raising is a true problem of practice that could benefit from coaching and reflection, try rewording it so that it does not potentially lead the conversation into discussion of confidential or otherwise sensitive information. If you have questions about appropriateness of the topic for discussion in this context, please consult your organization&apos;s legal counsel.
             </p>
             <div className="chat-dialog-buttons">
               <button
