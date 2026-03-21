@@ -515,10 +515,46 @@
   max-height: 90vh;
   overflow-y: auto;
 }
-.dewey-chat .chat-dialog-intro-panel {
+.dewey-chat .chat-dialog-intro-section {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border-color);
+}
+.dewey-chat .chat-dialog-intro-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  margin: 0 0 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+}
+.dewey-chat .chat-dialog-intro-toggle:hover {
+  color: var(--text-secondary);
+}
+.dewey-chat .chat-dialog-intro-toggle-label {
+  flex: 1;
+}
+.dewey-chat .chat-dialog-intro-chevron {
+  flex-shrink: 0;
+  font-size: 0.75em;
+  opacity: 0.85;
+}
+.dewey-chat .chat-dialog-intro-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+.dewey-chat .chat-dialog-intro-fields {
+  margin-top: 4px;
 }
 .dewey-chat .intro-field-error,
 .dewey-chat .chat-dialog-textarea.intro-field-error {

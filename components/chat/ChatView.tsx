@@ -252,6 +252,14 @@ export function ChatView() {
   const [userSchoolOrOffice, setUserSchoolOrOffice] = useState("");
   const [userRole, setUserRole] = useState("");
   const [userContext, setUserContext] = useState("");
+  const introBackgroundComplete = useMemo(
+    () =>
+      userPreferredName.trim().length > 0 &&
+      userSchoolOrOffice.trim().length > 0 &&
+      userRole.trim().length > 0 &&
+      userContext.trim().length > 0,
+    [userPreferredName, userSchoolOrOffice, userRole, userContext]
+  );
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string }[]>([]);
   const [citations, setCitations] = useState<{ sourceName: string; url: string; similarity?: number }[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -265,6 +273,8 @@ export function ChatView() {
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introDraft, setIntroDraft] = useState("");
   const [showIntroValidation, setShowIntroValidation] = useState(false);
+  /** When background fields are all filled, "About you" can collapse; this is the expanded state. */
+  const [introAboutExpanded, setIntroAboutExpanded] = useState(true);
   const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
   const [arcClassificationResult, setArcClassificationResult] = useState<{ arc: string; arcs?: string[]; question?: string; raw?: string } | null>(null);
   /** Coaching workflow (spec): arc + phase sequence and current index; null when not in a coaching session */
@@ -284,6 +294,7 @@ export function ChatView() {
   const everSeenCitationsRef = useRef<Map<string, { sourceName: string; url: string }>>(new Map());
   const citationKeysByTurnRef = useRef<Set<string>[]>([]);
   const introModalShownThisSessionRef = useRef(false);
+  const prevIntroBgCompleteRef = useRef<boolean | null>(null);
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
   const debugConsoleRef = useRef(false);
@@ -430,6 +441,23 @@ export function ChatView() {
     setShowIntroValidation(false);
     setArcClassificationResult(null);
   }, [sessionStatus, session?.user?.id]);
+
+  /** Intro modal: expand/collapse "About you" — expanded when any field empty; collapsed by default when all filled; auto-expand if user clears a field. */
+  useEffect(() => {
+    if (!showIntroModal) {
+      prevIntroBgCompleteRef.current = null;
+      return;
+    }
+    const complete = introBackgroundComplete;
+    const prev = prevIntroBgCompleteRef.current;
+    if (prev === null) {
+      setIntroAboutExpanded(!complete);
+    } else {
+      if (!prev && complete) setIntroAboutExpanded(false);
+      if (prev && !complete) setIntroAboutExpanded(true);
+    }
+    prevIntroBgCompleteRef.current = complete;
+  }, [showIntroModal, introBackgroundComplete]);
 
   const saveSettings = useCallback(
     async (patch: {
@@ -1712,48 +1740,76 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
               value={introDraft}
               onChange={(e) => { setIntroDraft(e.target.value); setShowIntroValidation(false); }}
             />
-            <div className="chat-dialog-intro-panel">
-              <p className="chat-form-label" style={{ marginBottom: 8 }}>About you</p>
-              <div className="chat-form-group" style={{ marginBottom: 10 }}>
-                <label className="chat-form-label">Preferred name</label>
-                <input
-                  type="text"
-                  className={`chat-form-input ${showIntroValidation && !userPreferredName.trim() ? "intro-field-error" : ""}`}
-                  placeholder="e.g. Jamie"
-                  value={userPreferredName}
-                  onChange={(e) => { setUserPreferredName(e.target.value); setShowIntroValidation(false); }}
-                />
-              </div>
-              <div className="chat-form-group" style={{ marginBottom: 10 }}>
-                <label className="chat-form-label">Your school or office</label>
-                <input
-                  type="text"
-                  className={`chat-form-input ${showIntroValidation && !userSchoolOrOffice.trim() ? "intro-field-error" : ""}`}
-                  placeholder="e.g. Mamaroneck Union Free School District"
-                  value={userSchoolOrOffice}
-                  onChange={(e) => { setUserSchoolOrOffice(e.target.value); setShowIntroValidation(false); }}
-                />
-              </div>
-              <div className="chat-form-group" style={{ marginBottom: 10 }}>
-                <label className="chat-form-label">Your role</label>
-                <input
-                  type="text"
-                  className={`chat-form-input ${showIntroValidation && !userRole.trim() ? "intro-field-error" : ""}`}
-                  placeholder="e.g. Assistant Superintendent"
-                  value={userRole}
-                  onChange={(e) => { setUserRole(e.target.value); setShowIntroValidation(false); }}
-                />
-              </div>
-              <div className="chat-form-group" style={{ marginBottom: 12 }}>
-                <label className="chat-form-label">Give me some information about your school or office.</label>
-                <textarea
-                  className={`chat-form-input ${showIntroValidation && !userContext.trim() ? "intro-field-error" : ""}`}
-                  placeholder="e.g. K–12 district, three elementary, one middle, one high..."
-                  rows={3}
-                  value={userContext}
-                  onChange={(e) => { setUserContext(e.target.value); setShowIntroValidation(false); }}
-                />
-              </div>
+            <div className="chat-dialog-intro-section">
+              {introBackgroundComplete ? (
+                <>
+                  <button
+                    type="button"
+                    className="chat-dialog-intro-toggle"
+                    aria-expanded={introAboutExpanded}
+                    aria-controls="intro-about-panel-fields"
+                    onClick={() => setIntroAboutExpanded((v) => !v)}
+                  >
+                    <span className="chat-dialog-intro-toggle-label">About you</span>
+                    <span className="chat-dialog-intro-chevron" aria-hidden>
+                      {introAboutExpanded ? "▼" : "▶"}
+                    </span>
+                  </button>
+                  {!introAboutExpanded && (
+                    <p className="chat-dialog-intro-summary" aria-live="polite">
+                      {[userPreferredName.trim(), userSchoolOrOffice.trim(), userRole.trim()].filter(Boolean).join(" · ") || "Profile on file"}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="chat-form-label" style={{ marginBottom: 8 }}>
+                  About you
+                </p>
+              )}
+              {(!introBackgroundComplete || introAboutExpanded) && (
+                <div id="intro-about-panel-fields" className="chat-dialog-intro-fields">
+                  <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                    <label className="chat-form-label">Preferred name</label>
+                    <input
+                      type="text"
+                      className={`chat-form-input ${showIntroValidation && !userPreferredName.trim() ? "intro-field-error" : ""}`}
+                      placeholder="e.g. Jamie"
+                      value={userPreferredName}
+                      onChange={(e) => { setUserPreferredName(e.target.value); setShowIntroValidation(false); }}
+                    />
+                  </div>
+                  <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                    <label className="chat-form-label">Your school or office</label>
+                    <input
+                      type="text"
+                      className={`chat-form-input ${showIntroValidation && !userSchoolOrOffice.trim() ? "intro-field-error" : ""}`}
+                      placeholder="e.g. Mamaroneck Union Free School District"
+                      value={userSchoolOrOffice}
+                      onChange={(e) => { setUserSchoolOrOffice(e.target.value); setShowIntroValidation(false); }}
+                    />
+                  </div>
+                  <div className="chat-form-group" style={{ marginBottom: 10 }}>
+                    <label className="chat-form-label">Your role</label>
+                    <input
+                      type="text"
+                      className={`chat-form-input ${showIntroValidation && !userRole.trim() ? "intro-field-error" : ""}`}
+                      placeholder="e.g. Assistant Superintendent"
+                      value={userRole}
+                      onChange={(e) => { setUserRole(e.target.value); setShowIntroValidation(false); }}
+                    />
+                  </div>
+                  <div className="chat-form-group" style={{ marginBottom: 12 }}>
+                    <label className="chat-form-label">Give me some information about your school or office.</label>
+                    <textarea
+                      className={`chat-form-input ${showIntroValidation && !userContext.trim() ? "intro-field-error" : ""}`}
+                      placeholder="e.g. K–12 district, three elementary, one middle, one high..."
+                      rows={3}
+                      value={userContext}
+                      onChange={(e) => { setUserContext(e.target.value); setShowIntroValidation(false); }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="chat-dialog-buttons" style={{ flexWrap: "wrap", gap: 8 }}>
               <button
