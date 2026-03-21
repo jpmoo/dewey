@@ -278,9 +278,8 @@ export function ChatView() {
   const { data: session, status: sessionStatus } = useSession();
   const settingsLoadedRef = useRef(false);
   const debugConsoleRef = useRef(false);
-  const [showDebugInfo, setShowDebugInfo] = useState(() =>
-    typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("dewey_debug") === "1" || localStorage.getItem("DEWEY_DEBUG") === "1")
-  );
+  /** Arc/phase strip above assistant bubbles — only when admin enables "Show debug messages and info" (not URL/localStorage). */
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
   /** Client override: ?dewey_debug=1 in URL or localStorage DEWEY_DEBUG=1 */
   const debugOverride = typeof window !== "undefined" && (
     (typeof URLSearchParams !== "undefined" && new URLSearchParams(window.location.search).get("dewey_debug") === "1") ||
@@ -540,14 +539,22 @@ export function ChatView() {
     fetch(pathWithBase("/api/chat/config"))
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { debugConsole?: boolean } | null) => {
-        const enabled = debugOverride || !!data?.debugConsole;
-        debugConsoleRef.current = enabled;
-        setShowDebugInfo(enabled);
-        if (enabled) {
-          console.log("[Dewey] Debug console ON — logging all AI calls and responses. (Override: add ?dewey_debug=1 to the URL or set localStorage DEWEY_DEBUG=1)");
+        const serverDebug = !!data?.debugConsole;
+        const logToConsole = serverDebug || debugOverride;
+        debugConsoleRef.current = logToConsole;
+        setShowDebugInfo(serverDebug);
+        if (logToConsole) {
+          if (serverDebug) {
+            console.log("[Dewey] Debug console ON — logging all AI calls and responses. Arc/phase labels in chat use this same setting.");
+          } else {
+            console.log("[Dewey] Debug console ON (URL ?dewey_debug=1 or localStorage DEWEY_DEBUG=1) — logging only; arc/phase labels follow admin “Show debug messages and info”.");
+          }
         }
       })
-      .catch(() => { debugConsoleRef.current = debugOverride; setShowDebugInfo(!!debugOverride); });
+      .catch(() => {
+        debugConsoleRef.current = debugOverride;
+        setShowDebugInfo(false);
+      });
   }, [debugOverride]);
 
   useEffect(() => {
@@ -760,6 +767,8 @@ You are currently in the following conversation phase:
 Phase: ${displayName}
 Objective: ${objective}
 This phase is complete when: ${endingCriteria}
+
+In the \`response\` field (the prose the leader reads), do not name or label the internal conversation phase—avoid phrases like "In this phase," "Moving to [phase name]," or repeating the phase title. Speak naturally; phase metadata is only for your routing.
 
 Return your response as JSON in the following format:
 {
