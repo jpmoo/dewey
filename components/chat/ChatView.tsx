@@ -980,6 +980,31 @@ Return your response as JSON in the following format:
     [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext]
   );
 
+  /** Ollama compliance screen. Returns true if the turn may proceed; false if BLOCK (caller should show modal). On error, allows. */
+  const checkComplianceAllows = useCallback(async (screeningContent: string): Promise<boolean> => {
+    if (!selectedModel?.trim() || !ollamaUrl.trim()) return true;
+    const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
+    try {
+      const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ollamaUrl: ollamaUrl.trim(),
+          model: selectedModel,
+          prompt: compliancePrompt,
+          stream: false,
+          options: { temperature: 0 },
+        }),
+      });
+      const compData = await compRes.json().catch(() => ({}));
+      const raw = ((compData.response ?? "") + "").trim();
+      const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
+      return !isBlock;
+    } catch {
+      return true;
+    }
+  }, [selectedModel, ollamaUrl]);
+
   const sendMessage = useCallback(async (optionalMessage?: string) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading) return;
@@ -997,23 +1022,11 @@ Return your response as JSON in the following format:
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n\n");
       const screeningContent = (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
-      const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
-      try {
-        const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false, options: { temperature: 0 } }),
-        });
-        const compData = await compRes.json().catch(() => ({}));
-        const raw = ((compData.response ?? "") + "").trim();
-        const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
-        if (isBlock) {
-          setComplianceBlockModal(true);
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // allow on error
+      const allowed = await checkComplianceAllows(screeningContent);
+      if (!allowed) {
+        setComplianceBlockModal(true);
+        setLoading(false);
+        return;
       }
       const userMsg = { role: "user" as const, content: text };
       setChatHistory((prev) => [...prev, userMsg]);
@@ -1027,23 +1040,11 @@ Return your response as JSON in the following format:
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n\n");
       const screeningContent = (historyBlob ? historyBlob + "\n\n" : "") + "User: " + text;
-      const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
-      try {
-        const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: compliancePrompt, stream: false, options: { temperature: 0 } }),
-        });
-        const compData = await compRes.json().catch(() => ({}));
-        const raw = ((compData.response ?? "") + "").trim();
-        const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
-        if (isBlock) {
-          setComplianceBlockModal(true);
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // allow on error
+      const allowed = await checkComplianceAllows(screeningContent);
+      if (!allowed) {
+        setComplianceBlockModal(true);
+        setLoading(false);
+        return;
       }
       const userMsg = { role: "user" as const, content: text };
       setChatHistory((prev) => [...prev, userMsg]);
@@ -1051,7 +1052,7 @@ Return your response as JSON in the following format:
       await runOpenConversationTurn(text);
       return;
     }
-  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn]);
+  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows]);
 
   const submitIntro = useCallback(async () => {
     const text = introDraft.trim();
@@ -1070,15 +1071,28 @@ Return your response as JSON in the following format:
       userRole,
       userContext,
     });
-    setShowIntroModal(false);
-    setIntroDraft("");
-    setArcClassificationResult(null);
     if (!selectedModel?.trim() || !ollamaUrl?.trim()) {
       setArcClassificationResult({ arc: "ERROR", raw: "Please connect to Ollama and select a model in settings." });
       return;
     }
     setLoading(true);
     try {
+      const userBlockCompliance = [
+        `Dilemma: ${text}`,
+        `Name: ${userPreferredName.trim()}`,
+        `Role: ${userRole.trim()}`,
+        `School/office: ${userSchoolOrOffice.trim()}`,
+        `Context: ${userContext.trim()}`,
+      ].join("\n");
+      const introScreeningContent = `User: ${userBlockCompliance}`;
+      const introComplianceOk = await checkComplianceAllows(introScreeningContent);
+      if (!introComplianceOk) {
+        setComplianceBlockModal(true);
+        return;
+      }
+      setShowIntroModal(false);
+      setIntroDraft("");
+      setArcClassificationResult(null);
       const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
@@ -1218,7 +1232,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
     } finally {
       setLoading(false);
     }
-  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl, runCoachingTurn, runOpenConversationTurn]);
+  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows]);
 
   /** Re-run arc classification with enriched dilemma (original + clarification); on single arc start coaching. */
   const submitClarification = useCallback(async () => {
@@ -1227,8 +1241,20 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
     if (!base || !selectedModel?.trim() || !ollamaUrl?.trim()) return;
     const enrichedDilemma = clarification ? `${base}\n\nClarification: ${clarification}` : base;
     setLoading(true);
-    setClarifyingInputValue("");
     try {
+      const clarifyComplianceBlock = [
+        `Dilemma: ${enrichedDilemma}`,
+        `Name: ${userPreferredName.trim()}`,
+        `Role: ${userRole.trim()}`,
+        `School/office: ${userSchoolOrOffice.trim()}`,
+        `Context: ${userContext.trim()}`,
+      ].join("\n");
+      const clarifyComplianceOk = await checkComplianceAllows(`User: ${clarifyComplianceBlock}`);
+      if (!clarifyComplianceOk) {
+        setComplianceBlockModal(true);
+        return;
+      }
+      setClarifyingInputValue("");
       const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
@@ -1330,7 +1356,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
     } finally {
       setLoading(false);
     }
-  }, [clarifyingInputValue, lastDilemmaForClarification, selectedModel, ollamaUrl, userPreferredName, userRole, userSchoolOrOffice, userContext, runCoachingTurn]);
+  }, [clarifyingInputValue, lastDilemmaForClarification, selectedModel, ollamaUrl, userPreferredName, userRole, userSchoolOrOffice, userContext, runCoachingTurn, checkComplianceAllows]);
 
   const fontDown = useCallback(() => setChatFontSize((f) => Math.max(CHAT_FONT_MIN, f - 2)), []);
   const fontUp = useCallback(() => setChatFontSize((f) => Math.min(CHAT_FONT_MAX, f + 2)), []);
@@ -1843,7 +1869,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
           <div className="chat-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <h3 className="chat-dialog-title">Compliance notice</h3>
             <p>
-              The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements. Therefore, I cannot continue. Remember that Dewey is only meant to be a reflective partner to push your thinking, not an authority for direct answers—particularly in areas like this. If the question or concern you are raising is a true problem of practice that could benefit from coaching and reflection, try rewording it so that it does not potentially lead the conversation into discussion of confidential or otherwise sensitive information. If you have questions about appropriateness of the topic for discussion in this context, please consult your organization&apos;s legal counsel.
+              The conversation is heading in a direction that may violate specific rules or laws about privacy, or trigger records retention requirements in your organization or locale. Remember that Dewey is only meant to be a reflective partner to push your thinking, not an authority for direct answers—particularly in areas like this. If the question or concern you are raising is a true problem of practice that could benefit from coaching and reflection, try rewording it so that it does not potentially lead the conversation into discussion of confidential or otherwise sensitive details. If you have questions about the appropriateness of the topic for discussion in Dewey, please consult your organization&apos;s or your own personal qualified legal counsel.
             </p>
             <div className="chat-dialog-buttons">
               <button
