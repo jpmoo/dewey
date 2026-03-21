@@ -347,6 +347,16 @@
   margin-bottom: 0;
   max-width: 100%;
 }
+.dewey-chat .chat-turn-context.chat-turn-context--debug {
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: #b91c1c;
+  font-weight: 500;
+}
+.dewey-chat[data-theme="dark"] .chat-turn-context.chat-turn-context--debug,
+.dewey-chat[data-theme="forest"] .chat-turn-context.chat-turn-context--debug {
+  color: #f87171;
+}
 .dewey-chat .chat-message {
   display: flex;
   max-width: 75%;

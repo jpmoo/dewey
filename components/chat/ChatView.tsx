@@ -1510,8 +1510,8 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   )}
                 </div>
                 {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase) && (
-                  <div className="chat-turn-context" role="status">
-                    {[msg.arc, msg.phase].filter(Boolean).join(" : ")}
+                  <div className="chat-turn-context chat-turn-context--debug" role="status">
+                    DEBUG ARC PHASE - {[msg.arc, msg.phase].filter(Boolean).join(" : ")}
                   </div>
                 )}
               </div>
