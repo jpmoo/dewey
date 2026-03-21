@@ -22,6 +22,8 @@ const CHAT_FONT_MAX = 24;
 const CHAT_FONT_DEFAULT = 14;
 const CITED_DOC_ROW_HEIGHT_PX = 48;
 const CITED_DOC_ANIM_DURATION_MS = 380;
+/** Display labels for debug strip; matches open_conversation in coaching_arcs.json / coaching_phases.json */
+const OPEN_CONVERSATION_DEBUG_LABEL = "Open conversation";
 
 const COMPLIANCE_SYSTEM_PROMPT = `You are a compliance screening layer for a public K–12 educational leadership AI system operating in New Jersey.
 
@@ -563,8 +565,15 @@ export function ChatView() {
 
   useEffect(() => {
     const onFocus = () => fetchDebugConfig();
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") fetchDebugConfig();
+    };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [fetchDebugConfig]);
 
   /** When we have a selected model, fetch its context length from Ollama and log it. */
@@ -708,14 +717,23 @@ export function ChatView() {
         return;
       }
       type PhaseDef = { machine_name: string; display_name?: string; objective?: string; ending_criteria?: string; callback_invitation?: string | null };
+      type ArcDefRow = { machine_name: string; display_name?: string };
       let phaseDef: PhaseDef | null = null;
       let phasesList: PhaseDef[] = [];
+      let arcDefRows: ArcDefRow[] = [];
       try {
-        const phasesRes = await fetch(pathWithBase("/api/coaching/phases"));
+        const [phasesRes, arcDefsRes] = await Promise.all([
+          fetch(pathWithBase("/api/coaching/phases")),
+          fetch(pathWithBase("/api/coaching/arc-definitions")),
+        ]);
         if (phasesRes.ok) {
           const data = (await phasesRes.json()) as { phases?: PhaseDef[] };
           phasesList = data.phases ?? [];
           phaseDef = phasesList.find((p) => p.machine_name === phaseMachineName) ?? null;
+        }
+        if (arcDefsRes.ok) {
+          const ad = (await arcDefsRes.json()) as { arcs?: ArcDefRow[] };
+          arcDefRows = ad.arcs ?? [];
         }
       } catch {
         // ignore
@@ -816,8 +834,11 @@ Return your response as JSON in the following format:
         const nextPhaseDef = nextPhaseMachineName ? phasesList.find((p) => p.machine_name === nextPhaseMachineName) ?? null : null;
         const phaseLabelForMessage = phaseComplete && nextPhaseDef ? (nextPhaseDef.display_name ?? nextPhaseMachineName!) : displayName;
 
-        const arcForMessage = arcOverride ?? coachingArc ?? undefined;
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcForMessage, phase: phaseLabelForMessage }]);
+        const arcMachine = arcOverride ?? coachingArc ?? undefined;
+        const arcDisplayForMessage = arcMachine
+          ? (arcDefRows.find((a) => a.machine_name === arcMachine)?.display_name ?? arcMachine.replace(/_/g, " "))
+          : undefined;
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
         for (const rawIdx of ragSourcesUsed) {
@@ -930,7 +951,15 @@ Return your response as JSON in the following format:
         }
         const response = (claudeData.response ?? "") as string;
         const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response }]);
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response,
+            arc: OPEN_CONVERSATION_DEBUG_LABEL,
+            phase: OPEN_CONVERSATION_DEBUG_LABEL,
+          },
+        ]);
 
         const citedSources = new Map<string, { sourceName: string; url: string }>();
         for (const rawIdx of ragSourcesUsed) {
@@ -1473,11 +1502,6 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
           <div className="chat-container" ref={containerRef}>
             {chatHistory.map((msg, i) => (
               <div key={i} className={`chat-message ${msg.role}`}>
-                {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase) && (
-                  <div className="chat-turn-context" role="status">
-                    {[msg.arc, msg.phase].filter(Boolean).join(" · ")}
-                  </div>
-                )}
                 <div className="chat-bubble">
                   {msg.role === "assistant" ? (
                     <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
@@ -1485,6 +1509,11 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                     msg.content
                   )}
                 </div>
+                {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase) && (
+                  <div className="chat-turn-context" role="status">
+                    {[msg.arc, msg.phase].filter(Boolean).join(" : ")}
+                  </div>
+                )}
               </div>
             ))}
             {summarizingStatus === "summarizing" && (
