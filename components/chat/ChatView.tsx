@@ -16,7 +16,8 @@ function renderMarkdown(text: string) {
 
 const THEME_ORDER = ["light", "dark", "muted-green", "gray", "muted-orange", "forest", "muted-blue"];
 const DEFAULT_OLLAMA = "http://localhost:11434";
-const RAG_THRESHOLD_DEFAULT = 0.6;
+/** Match RAGDoll server default (RAGDOLL_QUERY_THRESHOLD / RAGDOLL_API_GUIDE.md); higher = fewer matches */
+const RAG_THRESHOLD_DEFAULT = 0.45;
 const CHAT_FONT_MIN = 10;
 const CHAT_FONT_MAX = 24;
 const CHAT_FONT_DEFAULT = 14;
@@ -812,7 +813,8 @@ export function ChatView() {
               prompt: ragQuery,
               group: ragCollections,
               threshold: ragThreshold,
-              limit_chunk_role: true,
+              // false = RAGDoll default (RAGDOLL_API_GUIDE.md). true narrows by inferred ingest roles and often returns nothing.
+              limit_chunk_role: false,
             }),
           });
           const data = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -826,6 +828,17 @@ export function ChatView() {
             appendRagDollDebugError("RAG query (coaching)", err);
           } else {
             const flat = normalizeRagResponse(data);
+            debugLog(
+              "[Dewey] RAG coaching:",
+              flat.length,
+              "chunks after normalize; threshold=",
+              ragThreshold,
+              "groups=",
+              ragCollections
+            );
+            if (flat.length === 0) {
+              debugLog("[Dewey] RAG coaching: 0 chunks — top-level JSON keys from RAGDoll:", Object.keys(data));
+            }
             const topN = flat.slice(0, 10);
             numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
           }
@@ -937,6 +950,7 @@ Return your response as JSON in the following format:
       userRole,
       userContext,
       appendRagDollDebugError,
+      debugLog,
     ]
   );
 
@@ -957,7 +971,7 @@ Return your response as JSON in the following format:
               prompt: ragQuery,
               group: ragCollections,
               threshold: ragThreshold,
-              limit_chunk_role: true,
+              limit_chunk_role: false,
             }),
           });
           const data = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -971,6 +985,17 @@ Return your response as JSON in the following format:
             appendRagDollDebugError("RAG query (open)", err);
           } else {
             const flat = normalizeRagResponse(data);
+            debugLog(
+              "[Dewey] RAG open:",
+              flat.length,
+              "chunks after normalize; threshold=",
+              ragThreshold,
+              "groups=",
+              ragCollections
+            );
+            if (flat.length === 0) {
+              debugLog("[Dewey] RAG open: 0 chunks — top-level JSON keys from RAGDoll:", Object.keys(data));
+            }
             const topN = flat.slice(0, 10);
             numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
           }
@@ -1047,7 +1072,7 @@ Return your response as JSON in the following format:
         setLoading(false);
       }
     },
-    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, appendRagDollDebugError]
+    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, appendRagDollDebugError, debugLog]
   );
 
   /** Ollama compliance screen. Returns true if the turn may proceed; false if BLOCK (caller should show modal). On error, allows. */
