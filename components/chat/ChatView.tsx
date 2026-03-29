@@ -274,6 +274,10 @@ export function ChatView() {
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introDraft, setIntroDraft] = useState("");
   const [showIntroValidation, setShowIntroValidation] = useState(false);
+  /** Shown inside intro modal when Start fails (e.g. model not ready); avoids silent failure when arcClassificationResult is hidden behind the overlay */
+  const [introSubmitError, setIntroSubmitError] = useState<string | null>(null);
+  /** Saved settings + Ollama tags fetch finished for this session (intro can require model/url from API) */
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
   /** When background fields are all filled, "About you" can collapse; this is the expanded state. */
   const [introAboutExpanded, setIntroAboutExpanded] = useState(true);
   const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
@@ -363,8 +367,10 @@ export function ChatView() {
         loadFromStorage();
         settingsLoadedRef.current = true;
       }
+      setSettingsHydrated(true);
       return;
     }
+    setSettingsHydrated(false);
     let cancelled = false;
     fetch(pathWithBase("/api/chat/settings"))
       .then((r) => (r.ok ? r.json() : null))
@@ -417,6 +423,7 @@ export function ChatView() {
       .catch(() => loadFromStorage())
       .finally(() => {
         settingsLoadedRef.current = true;
+        setSettingsHydrated(true);
       });
     return () => {
       cancelled = true;
@@ -447,7 +454,7 @@ export function ChatView() {
     setLastDilemmaForClarification("");
     setClarifyingInputValue("");
     setShowIntroValidation(false);
-    setArcClassificationResult(null);
+    setIntroSubmitError(null);
     setRagDollDebugErrors([]);
   }, [sessionStatus, session?.user?.id]);
 
@@ -1126,7 +1133,12 @@ Return your response as JSON in the following format:
       const userMsg = { role: "user" as const, content: text };
       setChatHistory((prev) => [...prev, userMsg]);
       if (optionalMessage == null) setInputValue("");
-      await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
+      try {
+        await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
+      } finally {
+        // runCoachingTurn only clears loading inside a try/finally around the Claude call; if anything throws earlier, reset here so Send is not stuck disabled.
+        setLoading(false);
+      }
       return;
     }
     if (inOpenMode) {
@@ -1150,6 +1162,7 @@ Return your response as JSON in the following format:
   }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows]);
 
   const submitIntro = useCallback(async () => {
+    setIntroSubmitError(null);
     const text = introDraft.trim();
     const hasName = userPreferredName.trim().length > 0;
     const hasSchool = userSchoolOrOffice.trim().length > 0;
@@ -1166,7 +1179,21 @@ Return your response as JSON in the following format:
       userRole,
       userContext,
     });
-    if (!selectedModel?.trim() || !ollamaUrl?.trim()) {
+    if (!settingsHydrated) {
+      setIntroSubmitError(
+        "Still loading your saved settings. Wait until the left panel shows your Ollama connection, then try again."
+      );
+      return;
+    }
+    if (!ollamaUrl?.trim()) {
+      setIntroSubmitError("Add your Ollama server URL in the left panel and connect, then try again.");
+      setArcClassificationResult({ arc: "ERROR", raw: "Please connect to Ollama and select a model in settings." });
+      return;
+    }
+    if (!selectedModel?.trim()) {
+      setIntroSubmitError(
+        "Select a model in the left panel (expand the panel if needed). If the list is still loading, wait until it appears."
+      );
       setArcClassificationResult({ arc: "ERROR", raw: "Please connect to Ollama and select a model in settings." });
       return;
     }
@@ -1327,7 +1354,20 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
     } finally {
       setLoading(false);
     }
-  }, [introDraft, saveSettings, userPreferredName, userSchoolOrOffice, userRole, userContext, selectedModel, ollamaUrl, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows]);
+  }, [
+    introDraft,
+    saveSettings,
+    userPreferredName,
+    userSchoolOrOffice,
+    userRole,
+    userContext,
+    selectedModel,
+    ollamaUrl,
+    settingsHydrated,
+    runCoachingTurn,
+    runOpenConversationTurn,
+    checkComplianceAllows,
+  ]);
 
   /** Re-run arc classification with enriched dilemma (original + clarification); on single arc start coaching. */
   const submitClarification = useCallback(async () => {
@@ -1711,6 +1751,8 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                         setLastDilemmaForClarification("");
                         setShowIntroModal(true);
                         setIntroDraft("");
+                        setShowIntroValidation(false);
+                        setIntroSubmitError(null);
                       }}
                     >
                       Start new conversation
@@ -1794,12 +1836,21 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                 All fields are required. Please fill in each field before starting.
               </p>
             )}
+            {introSubmitError && (
+              <p className="chat-dialog-message intro-validation-msg" style={{ marginBottom: 12, color: "var(--intro-validation-color, #b91c1c)" }} role="alert">
+                {introSubmitError}
+              </p>
+            )}
             <textarea
               className={`chat-dialog-textarea ${showIntroValidation && !introDraft.trim() ? "intro-field-error" : ""}`}
               placeholder="e.g. I'm working on improving our district's approach to teacher evaluation. I'd like to explore how we can make observations more growth-oriented while still meeting state requirements..."
               rows={5}
               value={introDraft}
-              onChange={(e) => { setIntroDraft(e.target.value); setShowIntroValidation(false); }}
+              onChange={(e) => {
+                setIntroDraft(e.target.value);
+                setShowIntroValidation(false);
+                setIntroSubmitError(null);
+              }}
             />
             <div className="chat-dialog-intro-section">
               {introBackgroundComplete ? (
@@ -1836,7 +1887,11 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                       className={`chat-form-input ${showIntroValidation && !userPreferredName.trim() ? "intro-field-error" : ""}`}
                       placeholder="e.g. Jamie"
                       value={userPreferredName}
-                      onChange={(e) => { setUserPreferredName(e.target.value); setShowIntroValidation(false); }}
+                      onChange={(e) => {
+                        setUserPreferredName(e.target.value);
+                        setShowIntroValidation(false);
+                        setIntroSubmitError(null);
+                      }}
                     />
                   </div>
                   <div className="chat-form-group" style={{ marginBottom: 10 }}>
@@ -1846,7 +1901,11 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                       className={`chat-form-input ${showIntroValidation && !userSchoolOrOffice.trim() ? "intro-field-error" : ""}`}
                       placeholder="e.g. Mamaroneck Union Free School District"
                       value={userSchoolOrOffice}
-                      onChange={(e) => { setUserSchoolOrOffice(e.target.value); setShowIntroValidation(false); }}
+                      onChange={(e) => {
+                        setUserSchoolOrOffice(e.target.value);
+                        setShowIntroValidation(false);
+                        setIntroSubmitError(null);
+                      }}
                     />
                   </div>
                   <div className="chat-form-group" style={{ marginBottom: 10 }}>
@@ -1856,7 +1915,11 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                       className={`chat-form-input ${showIntroValidation && !userRole.trim() ? "intro-field-error" : ""}`}
                       placeholder="e.g. Assistant Superintendent"
                       value={userRole}
-                      onChange={(e) => { setUserRole(e.target.value); setShowIntroValidation(false); }}
+                      onChange={(e) => {
+                        setUserRole(e.target.value);
+                        setShowIntroValidation(false);
+                        setIntroSubmitError(null);
+                      }}
                     />
                   </div>
                   <div className="chat-form-group" style={{ marginBottom: 12 }}>
@@ -1866,7 +1929,11 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                       placeholder="e.g. K–12 district, three elementary, one middle, one high..."
                       rows={3}
                       value={userContext}
-                      onChange={(e) => { setUserContext(e.target.value); setShowIntroValidation(false); }}
+                      onChange={(e) => {
+                        setUserContext(e.target.value);
+                        setShowIntroValidation(false);
+                        setIntroSubmitError(null);
+                      }}
                     />
                   </div>
                 </div>
@@ -2040,6 +2107,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   setShowIntroModal(true);
                   setIntroDraft("");
                   setShowIntroValidation(false);
+                  setIntroSubmitError(null);
                   setArcClassificationResult(null);
                 }}
               >
