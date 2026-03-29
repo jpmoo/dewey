@@ -309,6 +309,13 @@ export function ChatView() {
     if (debugConsoleRef.current || debugOverride) console.log(...args);
   }, [debugOverride]);
 
+  /** Last RAG/RAGDoll failures this session; shown in Resources modal when admin debug is on */
+  const [ragDollDebugErrors, setRagDollDebugErrors] = useState<string[]>([]);
+  const appendRagDollDebugError = useCallback((source: string, detail: string) => {
+    const line = `${source}: ${detail}`;
+    setRagDollDebugErrors((prev) => [...prev.slice(-19), line]);
+  }, []);
+
   /** Dedupe citations by source (name+url), keep max similarity, sort by top similarity desc */
   const displayCitations = useMemo(() => {
     const byKey = new Map<string, { sourceName: string; url: string; maxSimilarity: number }>();
@@ -440,6 +447,7 @@ export function ChatView() {
     setClarifyingInputValue("");
     setShowIntroValidation(false);
     setArcClassificationResult(null);
+    setRagDollDebugErrors([]);
   }, [sessionStatus, session?.user?.id]);
 
   /** Intro modal: expand/collapse "About you" — expanded when any field empty; collapsed by default when all filled; auto-expand if user clears a field. */
@@ -541,17 +549,23 @@ export function ChatView() {
     }
     try {
       const r = await fetch(pathWithBase(`/api/chat/rag/collections?url=${encodeURIComponent(url)}`));
-      const d = await r.json().catch(() => ({}));
+      const d = (await r.json().catch(() => ({}))) as { collections?: unknown; error?: string };
+      if (!r.ok) {
+        appendRagDollDebugError("RAG collections", d.error ?? `HTTP ${r.status}`);
+        setRagOptions([]);
+        return;
+      }
       if (d.collections && Array.isArray(d.collections)) {
-        setRagOptions(d.collections);
-        setRagCollections((prev) => prev.filter((c) => d.collections.includes(c)));
+        setRagOptions(d.collections as string[]);
+        setRagCollections((prev) => prev.filter((c) => (d.collections as string[]).includes(c)));
       } else {
         setRagOptions([]);
       }
-    } catch {
+    } catch (e) {
+      appendRagDollDebugError("RAG collections", e instanceof Error ? e.message : String(e));
       setRagOptions([]);
     }
-  }, [ragUrl]);
+  }, [ragUrl, appendRagDollDebugError]);
 
   useEffect(() => {
     if (!connected) {
@@ -802,11 +816,21 @@ export function ChatView() {
             }),
           });
           const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-          const flat = normalizeRagResponse(data);
-          const topN = flat.slice(0, 10);
-          numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
-        } catch {
-          // continue without RAG
+          if (!res.ok) {
+            const err =
+              typeof data.error === "string"
+                ? data.error
+                : typeof (data as { message?: string }).message === "string"
+                  ? (data as { message: string }).message
+                  : `HTTP ${res.status}`;
+            appendRagDollDebugError("RAG query (coaching)", err);
+          } else {
+            const flat = normalizeRagResponse(data);
+            const topN = flat.slice(0, 10);
+            numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
+          }
+        } catch (e) {
+          appendRagDollDebugError("RAG query (coaching)", e instanceof Error ? e.message : String(e));
         }
       }
 
@@ -912,6 +936,7 @@ Return your response as JSON in the following format:
       userSchoolOrOffice,
       userRole,
       userContext,
+      appendRagDollDebugError,
     ]
   );
 
@@ -936,11 +961,21 @@ Return your response as JSON in the following format:
             }),
           });
           const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-          const flat = normalizeRagResponse(data);
-          const topN = flat.slice(0, 10);
-          numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
-        } catch {
-          // continue without RAG
+          if (!res.ok) {
+            const err =
+              typeof data.error === "string"
+                ? data.error
+                : typeof (data as { message?: string }).message === "string"
+                  ? (data as { message: string }).message
+                  : `HTTP ${res.status}`;
+            appendRagDollDebugError("RAG query (open)", err);
+          } else {
+            const flat = normalizeRagResponse(data);
+            const topN = flat.slice(0, 10);
+            numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
+          }
+        } catch (e) {
+          appendRagDollDebugError("RAG query (open)", e instanceof Error ? e.message : String(e));
         }
       }
 
@@ -1012,7 +1047,7 @@ Return your response as JSON in the following format:
         setLoading(false);
       }
     },
-    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext]
+    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, appendRagDollDebugError]
   );
 
   /** Ollama compliance screen. Returns true if the turn may proceed; false if BLOCK (caller should show modal). On error, allows. */
@@ -1641,6 +1676,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                         introModalShownThisSessionRef.current = false;
                         setChatHistory([]);
                         setCitations([]);
+                        setRagDollDebugErrors([]);
                         setCoachingArc(null);
                         setPhaseSequence([]);
                         setCurrentPhaseIndex(0);
@@ -1883,6 +1919,12 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
           <div className="chat-dialog-overlay" onClick={() => setDialogCitedDocs(false)}>
             <div className="chat-dialog cited-docs-dialog-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
               <h3 className="chat-dialog-title">Resources relevant to this conversation</h3>
+              {showDebugInfo && ragDollDebugErrors.length > 0 && (
+                <div className="cited-docs-rag-debug" role="region" aria-label="RAG debug errors">
+                  <p className="cited-docs-rag-debug-heading">RAG / RAGDoll errors (debug)</p>
+                  <pre className="cited-docs-rag-debug-pre">{ragDollDebugErrors.join("\n")}</pre>
+                </div>
+              )}
               {displayCitations.length === 0 ? (
                 <p className="cited-docs-empty">No relevant resources yet.</p>
               ) : (
@@ -1964,6 +2006,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   setDialogNewConversationConfirm(false);
                   setChatHistory([]);
                   setCitations([]);
+                  setRagDollDebugErrors([]);
                   setInputValue("");
                   previousCitedOrderRef.current = [];
                   lastShownOrderRef.current = [];
