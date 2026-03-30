@@ -221,6 +221,18 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
   return lines.join("\n").trimEnd();
 }
 
+/**
+ * RAGDoll `prompt` for retrieval: only what belongs in a semantic search — the user’s words plus a short
+ * prior-assistant hook on follow-ups. Phase and “About you” stay in the Claude payload only; adding them here
+ * can skew hits toward generic profile/district chunks or dilute the query with coaching metadata.
+ */
+function buildRagRetrievalPrompt(params: { userMessage: string; priorAssistant?: string }): string {
+  const msg = params.userMessage.trim();
+  const pas = params.priorAssistant?.trim();
+  if (!pas) return msg;
+  return `${msg}\n\nRecent assistant (snippet): ${pas.slice(0, 160)}`;
+}
+
 const RESERVED_TOKENS = 500;
 
 /**
@@ -819,7 +831,7 @@ export function ChatView() {
       const selectedRag = ragCollections.length > 0 && ragUrl.trim();
       if (selectedRag) {
         const priorAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content?.trim().slice(0, 120);
-        const ragQuery = [displayName, userMessage, priorAssistant].filter(Boolean).join(" ");
+        const ragQuery = buildRagRetrievalPrompt({ userMessage, priorAssistant });
         try {
           const res = await fetch(pathWithBase("/api/chat/rag/query"), {
             method: "POST",
@@ -977,7 +989,7 @@ Return your response as JSON in the following format:
       const selectedRag = ragCollections.length > 0 && ragUrl.trim();
       if (selectedRag) {
         const priorAssistant = chatHistory.filter((m) => m.role === "assistant").pop()?.content?.trim().slice(0, 120);
-        const ragQuery = [userMessage, priorAssistant].filter(Boolean).join(" ");
+        const ragQuery = buildRagRetrievalPrompt({ userMessage, priorAssistant });
         try {
           const res = await fetch(pathWithBase("/api/chat/rag/query"), {
             method: "POST",
