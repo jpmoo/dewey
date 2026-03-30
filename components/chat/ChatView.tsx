@@ -223,8 +223,17 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
 
 const RESERVED_TOKENS = 500;
 
-/** Document/citation base URL: user's app URL (no port) with the port from the RAG server URL, so links work behind proxies. */
+/**
+ * Base URL for citation "open document" links (browser must reach this host).
+ * When NEXT_PUBLIC_RAG_DOCUMENT_BASE is set (e.g. https://host/rag-api via Caddy → RAGDoll on 9042), use it — avoids broken https://app:9042/fetch/... when the browser only uses normal HTTPS (no port; Tailscale/Caddy handle the internal listener).
+ * Otherwise: same host as the app + port from rag server URL (legacy behavior).
+ */
 function getDocumentBaseUrl(ragServerUrl: string): string {
+  const publicBase =
+    typeof process !== "undefined" && typeof process.env.NEXT_PUBLIC_RAG_DOCUMENT_BASE === "string"
+      ? process.env.NEXT_PUBLIC_RAG_DOCUMENT_BASE.trim().replace(/\/$/, "")
+      : "";
+  if (publicBase) return publicBase;
   if (typeof window === "undefined" || !ragServerUrl.trim()) return ragServerUrl.trim();
   try {
     const u = new URL(ragServerUrl.trim());
