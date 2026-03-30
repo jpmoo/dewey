@@ -77,7 +77,7 @@ function deriveRagUrl(ollamaUrl: string) {
   }
 }
 
-/** Resolve a citation URL to use the given base (user's app URL + RAG port). Absolute URLs from the RAG server are rewritten to use the base so links don't show localhost. */
+/** Resolve a citation URL: relative `/fetch/...` from RAGDoll is joined to the public document base (same origin + `/rag-api`). Absolute URLs are rewritten to that path on the base host. */
 function resolveCitationUrl(base: string, url: string): string {
   const u = (url || "").trim();
   if (!u || u === "#") return "#";
@@ -236,25 +236,17 @@ function buildRagRetrievalPrompt(params: { userMessage: string; priorAssistant?:
 const RESERVED_TOKENS = 500;
 
 /**
- * Base URL for citation "open document" links (browser must reach this host).
- * When NEXT_PUBLIC_RAG_DOCUMENT_BASE is set (e.g. https://host/rag-api via Caddy → RAGDoll on 9042), use it — avoids broken https://app:9042/fetch/... when the browser only uses normal HTTPS (no port; Tailscale/Caddy handle the internal listener).
- * Otherwise: same host as the app + port from rag server URL (legacy behavior).
+ * Base path for citation links: `base + /fetch/...` → `/rag-api/fetch/...` (root-relative, no port).
+ * Default `/rag-api` matches Caddy `handle_path /rag-api/*` → RAGDoll on the same host as Dewey.
+ * Set NEXT_PUBLIC_RAG_DOCUMENT_BASE to an absolute URL if documents are served elsewhere.
  */
-function getDocumentBaseUrl(ragServerUrl: string): string {
+function getDocumentBaseUrl(_ragServerUrl: string): string {
   const publicBase =
     typeof process !== "undefined" && typeof process.env.NEXT_PUBLIC_RAG_DOCUMENT_BASE === "string"
       ? process.env.NEXT_PUBLIC_RAG_DOCUMENT_BASE.trim().replace(/\/$/, "")
       : "";
   if (publicBase) return publicBase;
-  if (typeof window === "undefined" || !ragServerUrl.trim()) return ragServerUrl.trim();
-  try {
-    const u = new URL(ragServerUrl.trim());
-    const port = u.port || (u.protocol === "https:" ? "443" : "80");
-    const appBase = window.location.origin.replace(/:\d+$/, "");
-    return `${appBase}:${port}`;
-  } catch {
-    return ragServerUrl.trim();
-  }
+  return "/rag-api";
 }
 
 export function ChatView() {
