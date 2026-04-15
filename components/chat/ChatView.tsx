@@ -207,8 +207,8 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
     bySource.get(key)!.push(c);
   }
   const lines: string[] = [
-    "--- Knowledge base excerpts (use these when relevant) ---",
-    "When the excerpts below relate to the leader's situation or question, use specific details from them and cite the source by name in your response (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). Do not ignore relevant excerpts.",
+    "--- Knowledge base excerpts (retrieved for this turn) ---",
+    "These passages were selected to match the leader's message. Treat them as the primary factual grounding when they bear on the situation or question: prefer grounding at least one observation or question in a relevant excerpt when any plausibly connects, and cite the source by name in your prose (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). In your JSON reply, list every excerpt number you drew on in \"rag_sources_used\" (the [1], [2], … labels below); omit indices for excerpts you did not use.",
     "",
   ];
   for (const [sourceName, list] of Array.from(bySource.entries())) {
@@ -869,7 +869,7 @@ export function ChatView() {
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts.
+When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts. Include in rag_sources_used every excerpt index ([1], [2], …) that you meaningfully used; omit indices for excerpts you did not use.
 
 Keep the conversation moving: ask one or two focused questions per turn when possible; avoid belaboring. When the leader has given enough for the phase (they have addressed the objective and the ending criteria below are substantially met), mark phase_complete true and move on — do not require multiple rounds of probing.
 
@@ -1026,7 +1026,7 @@ Return your response as JSON in the following format:
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts.
+When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts. Include in rag_sources_used every excerpt index ([1], [2], …) that you meaningfully used; omit indices for excerpts you did not use.
 
 Return your response as JSON in the following format:
 {
