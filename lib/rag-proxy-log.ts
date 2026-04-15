@@ -11,10 +11,22 @@ export function isRagProxyVerboseLogging(): boolean {
 
 /**
  * Approximate number of text chunks Dewey's client would extract (mirrors normalizeRagResponse in ChatView).
+ * Prefer flat `results` when non-empty; else documents/items/chunks.
  */
 export function approxChunkCountFromRagJson(data: Record<string, unknown>): number {
+  const results = data.results;
+  if (Array.isArray(results) && results.length > 0) {
+    let n = 0;
+    for (const item of results) {
+      const d = item as Record<string, unknown>;
+      const content = d.content ?? d.text;
+      const text = typeof content === "string" ? content.trim() : "";
+      if (text) n += 1;
+    }
+    return n;
+  }
   let n = 0;
-  const docList = (data.documents ?? data.results ?? data.items ?? data.chunks ?? []) as unknown[];
+  const docList = (data.documents ?? data.items ?? data.chunks ?? []) as unknown[];
   if (!Array.isArray(docList)) return 0;
   for (const doc of docList) {
     const d = doc as Record<string, unknown>;

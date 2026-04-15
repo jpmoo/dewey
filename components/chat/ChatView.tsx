@@ -18,6 +18,8 @@ const THEME_ORDER = ["light", "dark", "muted-green", "gray", "muted-orange", "fo
 const DEFAULT_OLLAMA = "http://localhost:11434";
 /** Match RAGDoll server default (RAGDOLL_QUERY_THRESHOLD / RAGDOLL_API_GUIDE.md); higher = fewer matches */
 const RAG_THRESHOLD_DEFAULT = 0.45;
+/** Max knowledge-base excerpts sent to the model per turn (best similarity across all sources). */
+const RAG_CHUNKS_TO_CLAUDE = 10;
 const CHAT_FONT_MIN = 10;
 const CHAT_FONT_MAX = 24;
 const CHAT_FONT_DEFAULT = 14;
@@ -170,31 +172,75 @@ function stripChunkLinks(text: string): string {
     .trim();
 }
 
-type NumberedChunk = { num: number; text: string; sourceName: string; url: string };
+type NumberedChunk = { num: number; text: string; sourceName: string; url: string; similarity?: number };
 
-/** Normalize RAG API response into a flat list of { text, sourceName, url }. Handles documents[].samples[] and fallbacks (documents[].content, chunks[]). */
-function normalizeRagResponse(data: Record<string, unknown>): { text: string; sourceName: string; url: string }[] {
-  const flat: { text: string; sourceName: string; url: string }[] = [];
-  const docList = (data.documents ?? data.results ?? data.items ?? data.chunks ?? []) as unknown[];
+type RagFlatItem = { text: string; sourceName: string; url: string; similarity: number };
+
+function parseRagSimilarity(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return -1;
+}
+
+/**
+ * Flatten RAGDoll query JSON into chunks with similarity scores.
+ * Prefer `results` when present — flat list sorted by similarity (RAGDOLL_API_GUIDE.md).
+ * Otherwise flatten `documents` / `items` / `chunks` (document-grouped order).
+ */
+function normalizeRagResponse(data: Record<string, unknown>): RagFlatItem[] {
+  const results = data.results;
+  if (Array.isArray(results) && results.length > 0) {
+    const flat: RagFlatItem[] = [];
+    for (const item of results) {
+      const d = item as Record<string, unknown>;
+      const sourceName =
+        (typeof d.source_name === "string" ? d.source_name : (d.metadata as Record<string, unknown>)?.source as string) ??
+        (d.name as string) ??
+        "Unknown";
+      const sourceUrl =
+        (typeof d.source_url === "string" ? d.source_url : (d.metadata as Record<string, unknown>)?.url as string) ?? (d.url as string) ?? "#";
+      const content = d.content ?? d.text;
+      const text = typeof content === "string" ? content.trim() : "";
+      if (!text) continue;
+      flat.push({ text, sourceName, url: sourceUrl, similarity: parseRagSimilarity(d.similarity) });
+    }
+    return flat;
+  }
+
+  const flat: RagFlatItem[] = [];
+  const docList = (data.documents ?? data.items ?? data.chunks ?? []) as unknown[];
   if (!Array.isArray(docList)) return flat;
   for (const doc of docList) {
     const d = doc as Record<string, unknown>;
-    const sourceName = (typeof d.source_name === "string" ? d.source_name : (d.metadata as Record<string, unknown>)?.source as string) ?? (d.name as string) ?? "Unknown";
-    const sourceUrl = (typeof d.source_url === "string" ? d.source_url : (d.metadata as Record<string, unknown>)?.url as string) ?? (d.url as string) ?? "#";
+    const sourceName =
+      (typeof d.source_name === "string" ? d.source_name : (d.metadata as Record<string, unknown>)?.source as string) ?? (d.name as string) ?? "Unknown";
+    const sourceUrl =
+      (typeof d.source_url === "string" ? d.source_url : (d.metadata as Record<string, unknown>)?.url as string) ?? (d.url as string) ?? "#";
     const samples = Array.isArray(d.samples) ? d.samples : [];
     if (samples.length > 0) {
       for (const s of samples) {
-        const t = (s as Record<string, unknown>).text ?? (s as Record<string, unknown>).content;
+        const sv = s as Record<string, unknown>;
+        const t = sv.text ?? sv.content;
         const text = typeof t === "string" ? t.trim() : "";
-        if (text) flat.push({ text, sourceName, url: (s as Record<string, unknown>).source_url as string ?? sourceUrl });
+        if (!text) continue;
+        const sampleUrl = typeof sv.source_url === "string" ? sv.source_url : sourceUrl;
+        flat.push({ text, sourceName, url: sampleUrl, similarity: parseRagSimilarity(sv.similarity) });
       }
     } else {
       const content = d.content ?? d.text;
       const text = typeof content === "string" ? content.trim() : "";
-      if (text) flat.push({ text, sourceName, url: sourceUrl });
+      if (!text) continue;
+      flat.push({ text, sourceName, url: sourceUrl, similarity: parseRagSimilarity(d.similarity) });
     }
   }
   return flat;
+}
+
+/** Highest-similarity chunks across all sources (ties keep stable order within same score). */
+function topChunksForClaude(flat: RagFlatItem[]): RagFlatItem[] {
+  return flat
+    .slice()
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, RAG_CHUNKS_TO_CLAUDE);
 }
 
 /** Format RAG chunks for the model: grouped by source, with instruction to reference sources by name. */
@@ -208,7 +254,7 @@ function formatRagContextBySource(chunks: NumberedChunk[]): string {
   }
   const lines: string[] = [
     "--- Knowledge base excerpts (retrieved for this turn) ---",
-    "These passages were selected to match the leader's message. Treat them as the primary factual grounding when they bear on the situation or question: prefer grounding at least one observation or question in a relevant excerpt when any plausibly connects, and cite the source by name in your prose (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). In your JSON reply, list every excerpt number you drew on in \"rag_sources_used\" (the [1], [2], … labels below); omit indices for excerpts you did not use.",
+    "These are the top excerpts by semantic similarity across your knowledge bases for this turn. Treat them as the primary factual grounding when they bear on the situation or question: prefer grounding at least one observation or question in a relevant excerpt when any plausibly connects, and cite the source by name in your prose (e.g. \"In your strategic framework, personalization and adult expertise are key priorities...\" or \"The Portrait of a Graduate emphasizes...\"). In your JSON reply, list every excerpt number you drew on in \"rag_sources_used\" (the [1], [2], … labels below); omit indices for excerpts you did not use.",
     "",
   ];
   for (const [sourceName, list] of Array.from(bySource.entries())) {
@@ -309,7 +355,7 @@ export function ChatView() {
   const citedListRef = useRef<HTMLUListElement>(null);
   const previousCitedOrderRef = useRef<string[]>([]);
   const lastShownOrderRef = useRef<string[]>([]);
-  const everSeenCitationsRef = useRef<Map<string, { sourceName: string; url: string }>>(new Map());
+  const everSeenCitationsRef = useRef<Map<string, { sourceName: string; url: string; similarity?: number }>>(new Map());
   const citationKeysByTurnRef = useRef<Set<string>[]>([]);
   const introModalShownThisSessionRef = useRef(false);
   const prevIntroBgCompleteRef = useRef<boolean | null>(null);
@@ -859,8 +905,14 @@ export function ChatView() {
             if (flat.length === 0) {
               debugLog("[Dewey] RAG coaching: 0 chunks — top-level JSON keys from RAGDoll:", Object.keys(data));
             }
-            const topN = flat.slice(0, 10);
-            numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
+            const topN = topChunksForClaude(flat);
+            numberedChunks = topN.map((c, i) => ({
+              num: i + 1,
+              text: stripChunkLinks(c.text),
+              sourceName: c.sourceName,
+              url: c.url,
+              ...(c.similarity >= 0 ? { similarity: c.similarity } : {}),
+            }));
           }
         } catch (e) {
           appendRagDollDebugError("RAG query (coaching)", e instanceof Error ? e.message : String(e));
@@ -932,14 +984,25 @@ Return your response as JSON in the following format:
           : undefined;
         setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage }]);
 
-        const citedSources = new Map<string, { sourceName: string; url: string }>();
+        const citedSources = new Map<string, { sourceName: string; url: string; similarity?: number }>();
         for (const rawIdx of ragSourcesUsed) {
           const idx = typeof rawIdx === "number" ? rawIdx : parseInt(String(rawIdx), 10);
           if (Number.isNaN(idx) || idx < 1) continue;
           const c = numberedChunks.find((x) => x.num === idx);
-          if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
+          if (c)
+            citedSources.set(`${c.sourceName}\0${c.url}`, {
+              sourceName: c.sourceName,
+              url: c.url,
+              ...(typeof c.similarity === "number" ? { similarity: c.similarity } : {}),
+            });
         }
-        setCitations(Array.from(citedSources.values()).map((v) => ({ sourceName: v.sourceName, url: v.url })));
+        setCitations(
+          Array.from(citedSources.values()).map((v) => ({
+            sourceName: v.sourceName,
+            url: v.url,
+            ...(typeof v.similarity === "number" ? { similarity: v.similarity } : {}),
+          }))
+        );
         citationKeysByTurnRef.current.push(new Set(Array.from(citedSources.keys())));
         everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
 
@@ -1016,8 +1079,14 @@ Return your response as JSON in the following format:
             if (flat.length === 0) {
               debugLog("[Dewey] RAG open: 0 chunks — top-level JSON keys from RAGDoll:", Object.keys(data));
             }
-            const topN = flat.slice(0, 10);
-            numberedChunks = topN.map((c, i) => ({ num: i + 1, text: stripChunkLinks(c.text), sourceName: c.sourceName, url: c.url }));
+            const topN = topChunksForClaude(flat);
+            numberedChunks = topN.map((c, i) => ({
+              num: i + 1,
+              text: stripChunkLinks(c.text),
+              sourceName: c.sourceName,
+              url: c.url,
+              ...(c.similarity >= 0 ? { similarity: c.similarity } : {}),
+            }));
           }
         } catch (e) {
           appendRagDollDebugError("RAG query (open)", e instanceof Error ? e.message : String(e));
@@ -1076,14 +1145,25 @@ Return your response as JSON in the following format:
           },
         ]);
 
-        const citedSources = new Map<string, { sourceName: string; url: string }>();
+        const citedSources = new Map<string, { sourceName: string; url: string; similarity?: number }>();
         for (const rawIdx of ragSourcesUsed) {
           const idx = typeof rawIdx === "number" ? rawIdx : parseInt(String(rawIdx), 10);
           if (Number.isNaN(idx) || idx < 1) continue;
           const c = numberedChunks.find((x) => x.num === idx);
-          if (c) citedSources.set(`${c.sourceName}\0${c.url}`, { sourceName: c.sourceName, url: c.url });
+          if (c)
+            citedSources.set(`${c.sourceName}\0${c.url}`, {
+              sourceName: c.sourceName,
+              url: c.url,
+              ...(typeof c.similarity === "number" ? { similarity: c.similarity } : {}),
+            });
         }
-        setCitations(Array.from(citedSources.values()).map((v) => ({ sourceName: v.sourceName, url: v.url })));
+        setCitations(
+          Array.from(citedSources.values()).map((v) => ({
+            sourceName: v.sourceName,
+            url: v.url,
+            ...(typeof v.similarity === "number" ? { similarity: v.similarity } : {}),
+          }))
+        );
         citationKeysByTurnRef.current.push(new Set(Array.from(citedSources.keys())));
         everSeenCitationsRef.current = new Map([...Array.from(everSeenCitationsRef.current.entries()), ...Array.from(citedSources.entries())]);
       } catch (e) {
