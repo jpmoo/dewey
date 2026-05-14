@@ -79,23 +79,31 @@ function deriveRagUrl(ollamaUrl: string) {
   }
 }
 
-/** Resolve a citation URL: relative `/fetch/...` from RAGDoll is joined to the public document base (same origin + `/rag-api`). Absolute URLs are rewritten to that path on the base host. */
+/**
+ * Resolve a citation URL:
+ * - External absolute URLs (web pages) → used as-is.
+ * - RAGDoll web-ingest paths like `/fetch/<group>/https%3A/<host>/<path>` → extract the embedded URL.
+ * - Plain RAGDoll relative paths like `/fetch/<group>/<filename>` → join to the public document base.
+ */
 function resolveCitationUrl(base: string, url: string): string {
   const u = (url || "").trim();
   if (!u || u === "#") return "#";
+  if (/^https?:\/\//i.test(u)) return u;
+  const embedded = u.match(/(https?(?:%3a|:))(%2f|\/)+(.+)$/i);
+  if (embedded) {
+    const scheme = embedded[1].replace(/%3a/i, ":");
+    let rest: string;
+    try {
+      rest = decodeURIComponent(embedded[3]);
+    } catch {
+      rest = embedded[3];
+    }
+    rest = rest.replace(/^\/+/, "");
+    return `${scheme}//${rest}`;
+  }
   const b = base.replace(/\/$/, "");
   if (!b) return u;
-  let path: string;
-  if (/^https?:\/\//i.test(u)) {
-    try {
-      const parsed = new URL(u);
-      path = parsed.pathname + parsed.search + parsed.hash;
-    } catch {
-      path = u.startsWith("/") ? u : `/${u}`;
-    }
-  } else {
-    path = u.startsWith("/") ? u : `/${u}`;
-  }
+  const path = u.startsWith("/") ? u : `/${u}`;
   return `${b}${path}`;
 }
 
