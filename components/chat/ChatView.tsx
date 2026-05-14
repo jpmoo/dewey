@@ -320,7 +320,7 @@ export function ChatView() {
       userContext.trim().length > 0,
     [userPreferredName, userSchoolOrOffice, userRole, userContext]
   );
-  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string; moves_used?: string[] }[]>([]);
   const [citations, setCitations] = useState<{ sourceName: string; url: string; similarity?: number }[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -919,26 +919,54 @@ export function ChatView() {
         }
       }
 
-      const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
+      const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — surfacing assumptions and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts. Include in rag_sources_used every excerpt index ([1], [2], …) that you meaningfully used; omit indices for excerpts you did not use.
+COACHING MOVES — pick 1–2 per turn from this menu, based on what this moment actually calls for. Questions are one option, not the default.
+- reflect: mirror back what you heard in fresh words so the leader can see it from outside.
+- name_tension: name a tension, trade-off, or contradiction you're noticing.
+- observe: offer a specific observation about what the leader said (without judgment).
+- frame: offer a frame, analogy, or distinction that reorganizes the problem.
+- summarize: consolidate what's emerged so far into a tight statement.
+- challenge: push back on an assumption or premise the leader is taking for granted.
+- surface_contradiction: point out where two things the leader said don't fit together.
+- sit_with: respond briefly and let the leader's statement stand without a question — give it room.
+- ask_question: ask one focused question.
+- thought_experiment: pose a hypothetical or stretch scenario to test the leader's thinking.
 
-Keep the conversation moving: ask one or two focused questions per turn when possible; avoid belaboring. When the leader has given enough for the phase (they have addressed the objective and the ending criteria below are substantially met), mark phase_complete true and move on — do not require multiple rounds of probing.
+RESPONSE SHAPE — vary it. Do not default to a three-part structure of (affirmation → context/citation → questions). Specifically:
+- Do not open every turn by validating the leader's last message ("That's a powerful observation," "What a great point").
+- Do not end every turn with a question, and avoid stacking two questions when one will do.
+- Vary the opening, body, and closing across consecutive turns. If the prior turn opened with a reflection and closed with a question, this turn should look different.
+- Pacing matters too: some turns should be short and pointed.
+
+If a "Recent moves you used" block is included in the user content, treat it as a hard constraint: pick different moves on this turn unless the moment genuinely demands a repeat.
+
+USING KNOWLEDGE-BASE EXCERPTS — when excerpts are provided, use them only when they materially shape your point on this turn. If they do, weave a specific detail in and cite the source by name (e.g. "In your strategic framework, personalization and adult expertise are key priorities…"). If none of the excerpts are relevant to this turn, ignore them — do not force a citation. \`rag_sources_used\` should list only the indices you actually leveraged; an empty list is fine.
+
+KEEP MOVING. When the leader has substantially met the phase objective and ending criteria below, mark phase_complete true — do not require multiple rounds of probing.
 
 You are currently in the following conversation phase:
 Phase: ${displayName}
 Objective: ${objective}
 This phase is complete when: ${endingCriteria}
 
-In the \`response\` field (the prose the leader reads), do not name or label the internal conversation phase—avoid phrases like "In this phase," "Moving to [phase name]," or repeating the phase title. Speak naturally; phase metadata is only for your routing.
+A "Phase position" hint may be included in the user content (opening / middle / closing). Let it tilt your move selection:
+- opening: favor reflect, observe, frame — establish the territory before pushing.
+- middle: favor challenge, surface_contradiction, name_tension, thought_experiment — do the harder work.
+- closing: favor summarize, sit_with — consolidate before transitioning.
+
+In the \`response\` field (the prose the leader reads), do not name or label the internal conversation phase — avoid phrases like "In this phase," "Moving to [phase name]," or repeating the phase title. Speak naturally; phase metadata is only for your routing. Likewise, do not mention the move names ("reflect", "challenge", etc.) in the prose.
 
 Return your response as JSON in the following format:
 {
   "response": "your coaching response here",
   "rag_sources_used": [1, 3],
+  "moves_used": ["reflect", "challenge"],
   "phase_complete": true or false,
   "phase_complete_reasoning": "brief explanation"
-}`;
+}
+
+\`moves_used\` must contain 1–2 values drawn exactly from the move menu above (lowercase, snake_case). Be honest about which moves you actually used.`;
 
       const transcriptLines = [...chatHistory, { role: "user" as const, content: userMessage }].map(
         (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`
@@ -952,6 +980,23 @@ Return your response as JSON in the following format:
       let userContent = "";
       if (userContextBlock.length > 0) {
         userContent += "User context (use when addressing the user):\n" + userContextBlock.join("\n") + "\n\n";
+      }
+      // Phase-position hint and recent-move feedback so Claude can vary turn shape across the conversation.
+      const isFirstTurnEver = chatHistory.length === 0;
+      const isLastPhase = idx === seq.length - 1;
+      const phasePosition = isFirstTurnEver ? "opening" : isLastPhase ? "closing" : "middle";
+      userContent += `Phase position: ${phasePosition}\n\n`;
+      const recentAssistant = chatHistory.filter((m) => m.role === "assistant").slice(-2);
+      const recentMovesLines = recentAssistant
+        .map((m, i) => {
+          const moves = Array.isArray(m.moves_used) && m.moves_used.length > 0 ? m.moves_used.join(", ") : null;
+          if (!moves) return null;
+          const label = i === recentAssistant.length - 1 ? "previous turn" : "two turns ago";
+          return `- ${label}: ${moves}`;
+        })
+        .filter((s): s is string => Boolean(s));
+      if (recentMovesLines.length > 0) {
+        userContent += "Recent moves you used (vary from these on this turn):\n" + recentMovesLines.join("\n") + "\n\n";
       }
       if (numberedChunks.length > 0) {
         userContent += formatRagContextBySource(numberedChunks) + "\n\n";
@@ -972,6 +1017,16 @@ Return your response as JSON in the following format:
         }
         const response = (claudeData.response ?? "") as string;
         const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        const ALLOWED_MOVES = new Set([
+          "reflect", "name_tension", "observe", "frame", "summarize",
+          "challenge", "surface_contradiction", "sit_with", "ask_question", "thought_experiment",
+        ]);
+        const movesUsed: string[] = Array.isArray(claudeData.moves_used)
+          ? (claudeData.moves_used as unknown[])
+              .map((v) => (typeof v === "string" ? v.trim().toLowerCase() : ""))
+              .filter((v) => ALLOWED_MOVES.has(v))
+              .slice(0, 2)
+          : [];
         const phaseComplete = !!claudeData.phase_complete;
         const hasNext = idx + 1 < seq.length;
         const nextPhaseMachineName = hasNext ? seq[idx + 1] : null;
@@ -982,7 +1037,7 @@ Return your response as JSON in the following format:
         const arcDisplayForMessage = arcMachine
           ? (arcDefRows.find((a) => a.machine_name === arcMachine)?.display_name ?? arcMachine.replace(/_/g, " "))
           : undefined;
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage }]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage, moves_used: movesUsed }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string; similarity?: number }>();
         for (const rawIdx of ragSourcesUsed) {
