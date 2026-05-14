@@ -1004,14 +1004,25 @@ Return your response as JSON in the following format:
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
       try {
-        const claudeRes = await fetch(pathWithBase("/api/chat/claude/generate"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ system: systemMessage, userContent }),
-        });
-        const claudeData = await claudeRes.json().catch(() => ({}));
+        const callClaude = async () => {
+          const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ system: systemMessage, userContent }),
+          });
+          const data = await res.json().catch(() => ({}));
+          return { res, data: data as Record<string, unknown> };
+        };
+        let { res: claudeRes, data: claudeData } = await callClaude();
+        // The server already retries parse failures internally; silently retry once more from the client if it still failed.
+        if (!claudeRes.ok && (claudeData as { invalidJson?: boolean }).invalidJson) {
+          ({ res: claudeRes, data: claudeData } = await callClaude());
+        }
         if (!claudeRes.ok) {
-          setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
+          // Suppress the invalid-JSON error from the chat — the retries are exhausted; clear loading and let the user resend.
+          if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
+            setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
+          }
           setLoading(false);
           return;
         }
@@ -1177,14 +1188,23 @@ Return your response as JSON in the following format:
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
       try {
-        const claudeRes = await fetch(pathWithBase("/api/chat/claude/generate"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ system: systemMessage, userContent }),
-        });
-        const claudeData = await claudeRes.json().catch(() => ({}));
+        const callClaude = async () => {
+          const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ system: systemMessage, userContent }),
+          });
+          const data = await res.json().catch(() => ({}));
+          return { res, data: data as Record<string, unknown> };
+        };
+        let { res: claudeRes, data: claudeData } = await callClaude();
+        if (!claudeRes.ok && (claudeData as { invalidJson?: boolean }).invalidJson) {
+          ({ res: claudeRes, data: claudeData } = await callClaude());
+        }
         if (!claudeRes.ok) {
-          setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
+          if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
+            setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
+          }
           setLoading(false);
           return;
         }

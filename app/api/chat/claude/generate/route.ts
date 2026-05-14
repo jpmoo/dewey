@@ -69,15 +69,17 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    let { text } = await doRequest();
-    let parsed = parseCoachingJson(text);
-    if (!parsed && text) {
-      const { text: retryText } = await doRequest();
-      parsed = parseCoachingJson(retryText);
+    const MAX_ATTEMPTS = 4;
+    let text = "";
+    let parsed: ClaudeCoachingResponse | null = null;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      ({ text } = await doRequest());
+      parsed = parseCoachingJson(text);
+      if (parsed) break;
     }
     if (!parsed) {
       return NextResponse.json(
-        { error: "Claude did not return valid coaching JSON", raw: text.slice(0, 500) },
+        { error: "Claude did not return valid coaching JSON", raw: text.slice(0, 500), invalidJson: true },
         { status: 502 }
       );
     }
