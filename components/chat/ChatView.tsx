@@ -949,11 +949,11 @@ RESPONSE SHAPE — vary it. Do not default to a three-part structure of (affirma
 
 If a "Recent moves you used" block is included in the user content, treat it as a hard constraint: pick different moves on this turn unless the moment genuinely demands a repeat.
 
-USING KNOWLEDGE-BASE EXCERPTS — when excerpts are provided, use them only when they genuinely sharpen your point on this turn. Two hard rules, no exceptions:
-1. If an excerpt influences what you say at all — even just shaping a question or framing — you MUST name the source inline in the prose (e.g. "Your Portrait of a Graduate puts adult expertise alongside personalization…", "In your strategic framework, the priority is…"). Do not paraphrase an excerpt without naming where it came from; the leader needs to see the connection.
-2. \`rag_sources_used\` and in-prose citations must agree. If index [N] is in \`rag_sources_used\`, the source for [N] is named in the response. If you didn't name a source in the response, do not include its index in \`rag_sources_used\`. An empty list is fine and expected when no excerpt actually shaped the turn.
+USING KNOWLEDGE-BASE EXCERPTS — when excerpts are provided, lean on them. They are the leader's own documents (their Portrait of a Graduate, strategic framework, etc.), and grounding the conversation in them is part of the value. Default to using at least one relevant excerpt per turn when any are reasonably on-topic; only skip them entirely when they're truly unrelated to the moment.
 
-Do not invent citations to satisfy the rule — if no excerpt is doing real work, leave \`rag_sources_used\` empty and write a clean coaching turn without one.
+When you use an excerpt, name the source inline in the prose so the leader can see the connection (e.g. "Your Portrait of a Graduate puts adult expertise alongside personalization…", "In your strategic framework, the priority is…") and list its index in \`rag_sources_used\`. Keep the two in sync — every index in \`rag_sources_used\` should correspond to a source you named, and every source you named should have its index listed.
+
+Don't fabricate citations or stretch an irrelevant excerpt to fit. But err on the side of using the excerpts when they offer any genuine purchase on the topic.
 
 KEEP MOVING. When the leader has substantially met the phase objective and ending criteria below, mark phase_complete true — do not require multiple rounds of probing.
 
