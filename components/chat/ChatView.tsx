@@ -949,9 +949,12 @@ RESPONSE SHAPE — vary it. Do not default to a three-part structure of (affirma
 
 If a "Recent moves you used" block is included in the user content, treat it as a hard constraint: pick different moves on this turn unless the moment genuinely demands a repeat.
 
-USING KNOWLEDGE-BASE EXCERPTS — when excerpts are provided, lean on them. They are the leader's own documents (their Portrait of a Graduate, strategic framework, etc.), and grounding the conversation in them is part of the value. Default to using at least one relevant excerpt per turn when any are reasonably on-topic; only skip them entirely when they're truly unrelated to the moment.
+USING KNOWLEDGE-BASE EXCERPTS — when excerpts are provided, lean on them. They are the leader's organizational documents (Portraits of a Graduate, strategic frameworks, playbooks, etc.) and grounding the conversation in them is part of the value. Default to using at least one relevant excerpt per turn when any are reasonably on-topic; only skip them entirely when they're truly unrelated to the moment.
 
-When you use an excerpt, name the source inline in the prose so the leader can see the connection (e.g. "Your Portrait of a Graduate puts adult expertise alongside personalization…", "In your strategic framework, the priority is…") and list its index in \`rag_sources_used\`. Keep the two in sync — every index in \`rag_sources_used\` should correspond to a source you named, and every source you named should have its index listed.
+When you use an excerpt:
+- Refer to the source by its actual name (e.g. "The Competency-Based Reporting Playbook describes…", "The Portrait of a Graduate puts adult expertise alongside personalization…"). NEVER refer to a source by its bracketed index in the prose — never write "Source [3]", "[2]", "the second excerpt", or similar. The bracketed indices exist only for the \`rag_sources_used\` field, not for the leader's reading.
+- Use neutral articles, not possessives. Say "The Portrait of a Graduate" or "The strategic framework," not "Your Portrait of a Graduate" or "Your strategic framework." The documents belong to the organization, not to the individual leader you're addressing.
+- List the excerpt's index in \`rag_sources_used\`. Keep the two in sync — every index in \`rag_sources_used\` must correspond to a source you named by name in the prose, and every source you named by name in the prose must have its index in \`rag_sources_used\`.
 
 Don't fabricate citations or stretch an irrelevant excerpt to fit. But err on the side of using the excerpts when they offer any genuine purchase on the topic.
 
@@ -1039,7 +1042,21 @@ Return your response as JSON in the following format:
           return;
         }
         const response = (claudeData.response ?? "") as string;
-        const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        const ragSourcesUsedRaw = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        // Backstop: if Claude named a source in the prose but forgot to add its index, add it from the chunk list.
+        const ragSourcesUsed = (() => {
+          const seen = new Set<number>(
+            ragSourcesUsedRaw
+              .map((n) => (typeof n === "number" ? n : parseInt(String(n), 10)))
+              .filter((n) => !Number.isNaN(n) && n >= 1)
+          );
+          const responseLower = response.toLowerCase();
+          for (const c of numberedChunks) {
+            const name = (c.sourceName || "").trim();
+            if (name && name.length >= 4 && responseLower.includes(name.toLowerCase())) seen.add(c.num);
+          }
+          return Array.from(seen);
+        })();
         const ALLOWED_MOVES = new Set([
           "reflect", "name_tension", "observe", "frame", "summarize",
           "challenge", "surface_contradiction", "sit_with", "ask_question", "thought_experiment",
@@ -1173,7 +1190,7 @@ Return your response as JSON in the following format:
 
       const systemMessage = `You are an executive coach for educational leaders. Your role is to guide leaders through structured conversations using the Socratic method — asking questions, surfacing assumptions, and helping leaders think more clearly rather than providing answers. Be warm, direct, and curious. Do not moralize.
 
-When knowledge base excerpts are provided in the user message below, use specific details from them and cite the source by name in your response (e.g. "In your strategic framework, personalization and adult expertise are key priorities..." or "The Portrait of a Graduate emphasizes..."). Do not ignore relevant excerpts. Include in rag_sources_used every excerpt index ([1], [2], …) that you meaningfully used; omit indices for excerpts you did not use.
+When knowledge base excerpts are provided in the user message below, lean on them when they're on-topic and weave specific details into your response. Refer to a source by its actual name (e.g. "The Competency-Based Reporting Playbook describes…", "The Portrait of a Graduate emphasizes…"). NEVER refer to a source by its bracketed index in the prose ("Source [3]", "[2]", "the second excerpt", etc.) — those indices exist only for the rag_sources_used field. Use neutral articles, not possessives — say "The strategic framework," not "Your strategic framework." Include in rag_sources_used every excerpt index you meaningfully used; omit indices for excerpts you did not use. Keep rag_sources_used and named-in-prose sources in sync.
 
 Return your response as JSON in the following format:
 {
@@ -1221,7 +1238,20 @@ Return your response as JSON in the following format:
           return;
         }
         const response = (claudeData.response ?? "") as string;
-        const ragSourcesUsed = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        const ragSourcesUsedRaw = Array.isArray(claudeData.rag_sources_used) ? (claudeData.rag_sources_used as number[]) : [];
+        const ragSourcesUsed = (() => {
+          const seen = new Set<number>(
+            ragSourcesUsedRaw
+              .map((n) => (typeof n === "number" ? n : parseInt(String(n), 10)))
+              .filter((n) => !Number.isNaN(n) && n >= 1)
+          );
+          const responseLower = response.toLowerCase();
+          for (const c of numberedChunks) {
+            const name = (c.sourceName || "").trim();
+            if (name && name.length >= 4 && responseLower.includes(name.toLowerCase())) seen.add(c.num);
+          }
+          return Array.from(seen);
+        })();
         setChatHistory((prev) => [
           ...prev,
           {
