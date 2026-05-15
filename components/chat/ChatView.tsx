@@ -1287,6 +1287,71 @@ Return your response as JSON in the following format:
     }
   }, [selectedModel, ollamaUrl]);
 
+  /**
+   * Mid-conversation reclassifier: while in open conversation, look at the running transcript plus the
+   * new user message and ask Ollama whether a structured arc now clearly fits. Returns the arc + its
+   * phase sequence on a clean single-arc match, or null to stay in open conversation.
+   */
+  const tryReclassifyToArc = useCallback(
+    async (latestUserMessage: string): Promise<{ arc: string; phaseSequence: string[] } | null> => {
+      if (!selectedModel?.trim() || !ollamaUrl.trim()) return null;
+      try {
+        const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
+        if (!arcsRes.ok) return null;
+        const arcsData = (await arcsRes.json()) as { arcs?: { name: string; description?: string; diagnostic_markers?: string[] }[] };
+        const arcs = Array.isArray(arcsData.arcs) ? arcsData.arcs : [];
+        if (arcs.length === 0) return null;
+        const arcList = arcs
+          .map(
+            (a) =>
+              `- Description: ${a.description ?? ""}\n  Diagnostic markers: ${(a.diagnostic_markers ?? []).join("; ")}\n  Reply with this key if this arc fits: ${a.name}`
+          )
+          .join("\n");
+        const transcript = [...chatHistory, { role: "user" as const, content: latestUserMessage }]
+          .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+          .join("\n\n");
+        const prompt = `You are deciding whether an ongoing open coaching conversation has shifted into a structured coaching arc.
+
+Default to staying in open_conversation. Only choose a structured arc when the leader has clearly landed on a specific problem, change initiative, decision, interpersonal situation, or similar that matches one of the arcs below — and they seem ready to work through it, not just explore.
+
+Rules:
+- If the conversation is still exploratory, vague, or general, reply exactly: open_conversation
+- If exactly one structured arc clearly fits and the leader is ready to work on it, reply with that arc's key (snake_case) on the first line. No extra text.
+- If two or more arcs could fit, reply: open_conversation (we stay open until it's unambiguous).
+- Never invent keys; only use the keys listed below.
+
+ARCS:
+${arcList}
+
+CONVERSATION SO FAR:
+${transcript}
+
+Reply with one key only.`;
+        const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt, stream: false, options: { temperature: 0 } }),
+        });
+        const genData = await genRes.json().catch(() => ({}));
+        const raw = ((genData.response ?? genData.message ?? "") + "").trim();
+        const firstLine = raw.split(/\n/)[0]?.trim().toLowerCase() ?? "";
+        const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
+        const candidate = firstLine.split(",")[0]?.split(/\s/)[0]?.trim() ?? "";
+        debugLog("[Dewey] Mid-conversation reclassify →", raw.slice(0, 120));
+        if (!candidate || !validNames.has(candidate) || candidate === "open_conversation") return null;
+        const defRes = await fetch(pathWithBase("/api/coaching/arc-definitions"));
+        if (!defRes.ok) return null;
+        const defData = (await defRes.json()) as { arcs?: { machine_name: string; phase_sequence: string[] }[] };
+        const arcDef = (defData.arcs ?? []).find((a) => a.machine_name === candidate);
+        if (!arcDef?.phase_sequence?.length) return null;
+        return { arc: candidate, phaseSequence: arcDef.phase_sequence };
+      } catch {
+        return null;
+      }
+    },
+    [selectedModel, ollamaUrl, chatHistory, debugLog]
+  );
+
   const sendMessage = useCallback(async (optionalMessage?: string) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading) return;
@@ -1336,10 +1401,22 @@ Return your response as JSON in the following format:
       const userMsg = { role: "user" as const, content: text };
       setChatHistory((prev) => [...prev, userMsg]);
       if (optionalMessage == null) setInputValue("");
+      // Reclassify mid-stream: if the conversation has now landed on a structured arc, switch into it.
+      const reclassified = await tryReclassifyToArc(text);
+      if (reclassified) {
+        setCoachingArc(reclassified.arc);
+        setPhaseSequence(reclassified.phaseSequence);
+        setCurrentPhaseIndex(0);
+        setSessionFinished(false);
+        setFinishedCallbackInvitation(null);
+        setArcClassificationResult((prev) => (prev ? { ...prev, arc: reclassified.arc, arcs: undefined, question: undefined } : { arc: reclassified.arc }));
+        await runCoachingTurn(text, reclassified.phaseSequence, 0, reclassified.arc);
+        return;
+      }
       await runOpenConversationTurn(text);
       return;
     }
-  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows]);
+  }, [inputValue, loading, selectedModel, ollamaUrl, userPreferredName, userSchoolOrOffice, userRole, userContext, chatHistory, coachingArc, sessionFinished, phaseSequence, currentPhaseIndex, arcClassificationResult?.arc, runCoachingTurn, runOpenConversationTurn, checkComplianceAllows, tryReclassifyToArc]);
 
   const submitIntro = useCallback(async () => {
     setIntroSubmitError(null);
