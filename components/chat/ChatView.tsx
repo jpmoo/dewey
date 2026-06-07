@@ -1573,15 +1573,24 @@ Reply with one key only.`;
       ].join("\n");
       const classificationPrompt = `You are classifying a school leader's dilemma into one of the following coaching arcs.
 
-IMPORTANT — When to choose open_conversation:
-- Prefer open_conversation when the user wants to explore a topic (e.g. "explore pros and cons", "as it relates to our strategic framework" or "Portrait of a Graduate") without a clear problem to fix or change to roll out.
-- Prefer open_conversation when the user is catching up, sharing generally, thinking out loud, or when their opening is vague or does not clearly match a structured arc (no specific problem, no change initiative, no interpersonal situation).
-- Do NOT force a structured arc when the dilemma is general or exploratory. If in doubt between a structured arc and open conversation, choose open_conversation.
+DEFAULT to a structured arc whenever the dilemma names a problem, a goal to pursue, a change to roll out, a behavior to shift, or a tension between people — even when the wording is short. Most dilemmas a school leader brings to coaching fit a structured arc; open_conversation is the exception, not the default.
+
+Signals of a structured arc (pick the best-fitting one):
+- "I want to improve X" / "I need to fix X" / "X isn't working" → a problem of practice or change initiative
+- A specific behavior, attitude, or skill gap among staff, students, or families
+- A planned rollout, new program, new structure, or initiative
+- An interpersonal conflict, performance concern, or trust issue with a specific person or group
+- A decision the leader is weighing where the options are bounded
+
+Only choose open_conversation when ALL of these are true:
+- No specific problem, goal, change, or person-tension is named
+- The user explicitly says they want to think out loud, catch up, or explore a topic abstractly
+- The opening is generic (e.g. "tell me about Portrait of a Graduate", "what do you think about formative assessment")
 
 Rules:
-- If one arc clearly fits best (including open_conversation), respond with only that arc's reply key (the exact snake_case value shown).
+- If one arc clearly fits best, respond with only that arc's reply key (the exact snake_case value shown).
 - If two or more structured arcs could fit and you're unsure, respond with those keys separated by commas. You MUST then add a new line starting with QUESTION: and one short, situation-specific clarifying question (e.g. QUESTION: Is the main challenge getting people to adopt the new program, or measuring whether it's working?). Do not repeat arc names; ask in plain language.
-- If no other arc clearly fits, respond with open_conversation. Never respond with NONE.
+- If no structured arc fits at all, then and only then respond with open_conversation. Never respond with NONE.
 
 ARCS:
 ${arcList}
