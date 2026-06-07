@@ -25,6 +25,12 @@ export type ClaudeCoachingResponse = {
   phase_complete_reasoning: string;
 };
 
+/** Reject responses that are empty or near-empty (e.g. "...", "…", a single bullet) — Claude or Ollama occasionally emits a placeholder that parses but is useless to the leader. Treated as invalid so the caller retries. */
+function isUselessResponse(response: string): boolean {
+  const stripped = response.replace(/[\s\.…\-_*•~`'"–—]+/g, "");
+  return stripped.length < 8;
+}
+
 function parseCoachingJson(raw: string): ClaudeCoachingResponse | null {
   const trimmed = raw.trim();
   const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
@@ -32,6 +38,7 @@ function parseCoachingJson(raw: string): ClaudeCoachingResponse | null {
   try {
     const data = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     const response = typeof data.response === "string" ? data.response : "";
+    if (isUselessResponse(response)) return null;
     const rawRag = Array.isArray(data.rag_sources_used) ? data.rag_sources_used : [];
     const rag_sources_used = rawRag
       .map((n) => (typeof n === "number" ? n : parseInt(String(n), 10)))
