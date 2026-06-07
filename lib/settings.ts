@@ -19,13 +19,17 @@ export interface ChatSettings {
   is_system_admin?: boolean;
 }
 
-/** Lazy, idempotent migration for columns added after the original schema.sql. */
+/** Lazy, idempotent migration for columns added or dropped after the original schema.sql. */
 let schemaPromise: Promise<void> | null = null;
 async function ensureSchema(): Promise<void> {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       const pool = getPool();
       await pool.query("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS coaching_model TEXT");
+      // ollama_url, rag_server_url, and model moved to the admin runtime config and are no longer per-user.
+      await pool.query("ALTER TABLE user_settings DROP COLUMN IF EXISTS ollama_url");
+      await pool.query("ALTER TABLE user_settings DROP COLUMN IF EXISTS rag_server_url");
+      await pool.query("ALTER TABLE user_settings DROP COLUMN IF EXISTS model");
     })().catch((e) => {
       // Reset so a transient failure (e.g. table not yet created on first install) can retry next call.
       schemaPromise = null;
@@ -46,11 +50,9 @@ function rowToSettings(row: Record<string, unknown> | null): ChatSettings {
   const arr = row.rag_collections;
   const ragCollections = Array.isArray(arr) ? (arr as string[]) : undefined;
   return {
-    ollamaUrl: row.ollama_url != null ? String(row.ollama_url) : undefined,
-    ragServerUrl: row.rag_server_url != null ? String(row.rag_server_url) : undefined,
+    // ollamaUrl, ragServerUrl, model are global and overlaid onto the result in getSettings — not stored per-user.
     ragThreshold: row.rag_threshold != null ? Number(row.rag_threshold) : undefined,
     ragCollections: ragCollections?.length ? ragCollections : undefined,
-    model: row.model != null ? String(row.model) : undefined,
     coachingModel: row.coaching_model != null ? String(row.coaching_model) : undefined,
     theme: row.theme != null ? String(row.theme) : undefined,
     panelState: row.panel_state != null ? String(row.panel_state) : undefined,
@@ -68,7 +70,7 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
   const pool = getPool();
   await ensureSchema();
   const res = await pool.query(
-    "SELECT ollama_url, rag_server_url, rag_threshold, rag_collections, model, coaching_model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
+    "SELECT rag_threshold, rag_collections, coaching_model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
     [uid]
   );
   const settings = rowToSettings(res.rows[0] ?? null);
@@ -150,15 +152,12 @@ export async function setSettings(userId: string, partial: Partial<ChatSettings>
 
   await pool.query(
     `INSERT INTO user_settings (
-      user_id, ollama_url, rag_server_url, rag_threshold, rag_collections, model, coaching_model, theme, panel_state,
+      user_id, rag_threshold, rag_collections, coaching_model, theme, panel_state,
       chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (user_id) DO UPDATE SET
-      ollama_url = EXCLUDED.ollama_url,
-      rag_server_url = EXCLUDED.rag_server_url,
       rag_threshold = EXCLUDED.rag_threshold,
       rag_collections = EXCLUDED.rag_collections,
-      model = EXCLUDED.model,
       coaching_model = EXCLUDED.coaching_model,
       theme = EXCLUDED.theme,
       panel_state = EXCLUDED.panel_state,
@@ -171,11 +170,8 @@ export async function setSettings(userId: string, partial: Partial<ChatSettings>
       updated_at = NOW()`,
     [
       uid,
-      next.ollamaUrl ?? null,
-      next.ragServerUrl ?? null,
       next.ragThreshold ?? null,
       next.ragCollections ? JSON.stringify(next.ragCollections) : null,
-      next.model ?? null,
       next.coachingModel ?? null,
       next.theme ?? null,
       next.panelState ?? null,

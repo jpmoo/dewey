@@ -30,8 +30,6 @@ export function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [clearing, setClearing] = useState(false);
-  const [clearMessage, setClearMessage] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -138,22 +136,6 @@ export function AdminSettings() {
       setSaving(false);
     }
   }, [draft, debugConsole, applyToAll, load]);
-
-  const clearPerUserGlobals = useCallback(async () => {
-    setClearing(true);
-    setClearMessage(null);
-    try {
-      const res = await fetch(pathWithBase("/api/admin/settings/clear-per-user-globals"), { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Clear failed");
-      const rows = typeof data.rowsCleared === "number" ? data.rowsCleared : 0;
-      setClearMessage(rows === 0 ? "Nothing to clear — no users had per-user overrides for those settings." : `Cleared per-user Ollama URL, default model, and RAG server URL on ${rows} user row${rows === 1 ? "" : "s"}.`);
-    } catch (e) {
-      setClearMessage(e instanceof Error ? e.message : "Clear failed");
-    } finally {
-      setClearing(false);
-    }
-  }, []);
 
   if (loading) return <p className="text-dewey-mute">Loading settings…</p>;
 
@@ -290,24 +272,6 @@ export function AdminSettings() {
         {message && (
           <span className="text-sm text-dewey-mute">{message}</span>
         )}
-      </div>
-      <div className="mt-6 pt-4 border-t border-dewey-border">
-        <p className="text-sm text-dewey-mute mb-2">
-          One-time: clear any leftover per-user values for the Ollama URL, default model, and RAG server URL. Those settings are global now, so the per-user columns are dead weight — this nulls them out.
-        </p>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-            onClick={clearPerUserGlobals}
-            disabled={clearing}
-          >
-            {clearing ? "Clearing…" : "Clear per-user copies of global settings"}
-          </button>
-          {clearMessage && (
-            <span className="text-sm text-dewey-mute">{clearMessage}</span>
-          )}
-        </div>
       </div>
     </section>
   );
