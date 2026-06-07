@@ -63,6 +63,45 @@ function serializeEnv(entries: Map<string, string>): string {
   return lines.join("\n") + (lines.length ? "\n" : "");
 }
 
+/**
+ * Remove the given keys from `.env.local`, preserving comments and blank lines.
+ * Returns the keys that were actually present and removed.
+ */
+export async function removeKeysFromEnvLocal(keys: Set<string>): Promise<string[]> {
+  let content: string;
+  try {
+    content = await readFile(getEnvLocalPath(), "utf-8");
+  } catch {
+    return [];
+  }
+  const removed: string[] = [];
+  const outLines: string[] = [];
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      outLines.push(line);
+      continue;
+    }
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) {
+      outLines.push(line);
+      continue;
+    }
+    const key = trimmed.slice(0, eq).trim();
+    if (keys.has(key)) {
+      removed.push(key);
+      continue;
+    }
+    outLines.push(line);
+  }
+  if (removed.length > 0) {
+    // Collapse runs of 3+ blank lines down to 2 so removals don't leave large gaps.
+    const collapsed = outLines.join("\n").replace(/\n{3,}/g, "\n\n");
+    await writeFile(getEnvLocalPath(), collapsed, "utf-8");
+  }
+  return removed;
+}
+
 export async function readEnvLocal(): Promise<Map<string, string>> {
   try {
     const content = await readFile(getEnvLocalPath(), "utf-8");

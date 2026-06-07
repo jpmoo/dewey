@@ -5,14 +5,18 @@ import {
   ADMIN_ENV_KEYS,
   readEnvLocal,
   readRuntimeConfig,
+  removeKeysFromEnvLocal,
   writeRuntimeConfig,
 } from "@/lib/env-admin";
 
 /**
- * One-time migration: for each admin-managed key that is currently blank in the
- * runtime config, copy a non-empty value from `.env.local` into the runtime
- * config. Keys already present and non-empty in the runtime config are left
- * alone, and keys not in ADMIN_ENV_KEYS are never touched.
+ * One-time migration:
+ * 1. For each admin-managed key that is currently blank in the runtime config,
+ *    copy a non-empty value from `.env.local` into the runtime config.
+ * 2. Then strip from `.env.local` any admin-managed key that is now set in the
+ *    runtime config (so there's a single source of truth going forward).
+ * Keys already present and non-empty in the runtime config are left alone;
+ * keys not in ADMIN_ENV_KEYS are never touched in either file.
  */
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -46,11 +50,20 @@ export async function POST() {
     if (copied.length > 0) {
       await writeRuntimeConfig({ ...runtime, env: currentEnv });
     }
+    // Strip from .env.local any admin-managed key that is now set in the runtime config.
+    const removalCandidates = new Set<string>();
+    for (const { key } of ADMIN_ENV_KEYS) {
+      const runtimeHasIt = (currentEnv[key] ?? "").trim().length > 0;
+      const fileHasIt = (envLocal.get(key) ?? "").trim().length > 0;
+      if (runtimeHasIt && fileHasIt) removalCandidates.add(key);
+    }
+    const removedFromEnvLocal = removalCandidates.size > 0 ? await removeKeysFromEnvLocal(removalCandidates) : [];
     return NextResponse.json({
       ok: true,
       copied,
       skippedAlreadySet,
       skippedNoSource,
+      removedFromEnvLocal,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to import .env.local";
