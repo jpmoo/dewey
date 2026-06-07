@@ -31,11 +31,10 @@ export async function PATCH(request: NextRequest) {
   if (typeof body !== "object" || body === null) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  // ollamaUrl, ragServerUrl, and model are global (admin-managed) — silently ignore any per-user attempts to change them.
+  // ollamaUrl, ragServerUrl, model, and coachingModel are global (admin-managed) — silently ignore any per-user attempts to change them.
   const partial: Record<string, unknown> = {};
   if (typeof body.ragThreshold === "number") partial.ragThreshold = body.ragThreshold;
   if (Array.isArray(body.ragCollections)) partial.ragCollections = body.ragCollections;
-  if (typeof body.coachingModel === "string") partial.coachingModel = body.coachingModel;
   if (typeof body.theme === "string") partial.theme = body.theme;
   if (typeof body.panelState === "string") partial.panelState = body.panelState;
   if (typeof body.chatFontSize === "number") partial.chatFontSize = body.chatFontSize;

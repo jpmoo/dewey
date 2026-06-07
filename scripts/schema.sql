@@ -19,10 +19,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth ON users (auth_provider, provi
 
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
-  -- ollama_url, rag_server_url, and model live in admin runtime config (data/dewey-runtime.json), not per user.
+  -- ollama_url, rag_server_url, model, and coaching_model live in admin runtime config (data/dewey-runtime.json), not per user.
   rag_threshold DOUBLE PRECISION,
   rag_collections JSONB,
-  coaching_model TEXT,
   theme TEXT,
   panel_state TEXT,
   chat_font_size INTEGER,

@@ -71,7 +71,7 @@ export async function PATCH(
   }
   const partial: Partial<ChatSettings> = {};
   const allowed: (keyof ChatSettings)[] = [
-    "ragThreshold", "ragCollections", "coachingModel",
+    "ragThreshold", "ragCollections",
     "theme", "chatFontSize",
     "userPreferredName", "userSchoolOrOffice", "userRole", "userContext",
     "is_system_admin",
