@@ -5,12 +5,15 @@ import { pathWithBase } from "@/lib/base-path";
 
 type EnvEntry = { key: string; value: string; obscured: boolean; label?: string };
 
+/**
+ * Keys whose admin default is also writable to every existing user's row.
+ * Ollama URL / RAG server URL / structural Ollama model are now GLOBAL —
+ * read directly from runtime config at lookup time — so they don't need
+ * (and shouldn't show) an "Apply to all" checkbox.
+ */
 const APPLY_TO_ALL_KEYS: string[] = [
-  "DEWEY_DEFAULT_OLLAMA_URL",
-  "DEWEY_DEFAULT_RAG_SERVER_URL",
   "DEWEY_DEFAULT_RAG_THRESHOLD",
   "DEWEY_DEFAULT_RAG_COLLECTIONS",
-  "DEWEY_DEFAULT_MODEL",
   "DEWEY_DEFAULT_COACHING_MODEL",
 ];
 
@@ -167,10 +170,7 @@ export function AdminSettings() {
     <section className="mb-8">
       <h2 className="text-lg font-semibold mb-3">Settings</h2>
       <p className="text-sm text-dewey-mute mb-4">
-        Defaults for new users and server configuration (saved to <code className="text-xs bg-gray-100 px-1 rounded">.env.local</code> and{" "}
-        <code className="text-xs bg-gray-100 px-1 rounded">data/dewey-runtime.json</code> where needed). The Anthropic key is used for Claude coaching (
-        <code className="text-xs bg-gray-100 px-1 rounded">api.anthropic.com</code>
-        ).
+        Server configuration and defaults (saved to <code className="text-xs bg-gray-100 px-1 rounded">data/dewey-runtime.json</code>). The Ollama URL, default Ollama model, and RAG server URL are <strong>global</strong> — every user sees what you set here. RAG threshold, RAG collections, and the coaching model are per-user defaults; use the "Apply to all current users" checkbox to also write the new value to existing users. The Anthropic key is used for Claude coaching (<code className="text-xs bg-gray-100 px-1 rounded">api.anthropic.com</code>).
       </p>
       <div className="space-y-3 max-w-xl">
         {env.filter((e) => e.key !== "DEWEY_DEBUG_CONSOLE").map((e) => {

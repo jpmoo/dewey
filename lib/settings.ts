@@ -71,7 +71,13 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
     "SELECT ollama_url, rag_server_url, rag_threshold, rag_collections, model, coaching_model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
     [uid]
   );
-  return rowToSettings(res.rows[0] ?? null);
+  const settings = rowToSettings(res.rows[0] ?? null);
+  // ollamaUrl, ragServerUrl, and model are global: the admin runtime config wins over any per-user value still sitting in user_settings.
+  const adminDefaults = getDefaultSettingsFromEnv();
+  if (adminDefaults.ollamaUrl) settings.ollamaUrl = adminDefaults.ollamaUrl;
+  if (adminDefaults.ragServerUrl) settings.ragServerUrl = adminDefaults.ragServerUrl;
+  if (adminDefaults.model) settings.model = adminDefaults.model;
+  return settings;
 }
 
 /** Read a default from process.env only (e.g. .env.local). Use when creating new users so file wins over runtime config. */
