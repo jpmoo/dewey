@@ -83,6 +83,11 @@ export async function PATCH(
     else if (key === "is_system_admin" && typeof body[key] === "boolean") partial.is_system_admin = body[key];
     else if (typeof body[key] === "string") (partial as Record<string, unknown>)[key] = body[key];
   }
+  // Refuse to let a logged-in admin remove their own admin status — the UI also locks this, but defense in depth.
+  const sessionUid = parseInt(session.user.id, 10);
+  if (Number.isFinite(sessionUid) && sessionUid === id && partial.is_system_admin === false) {
+    return NextResponse.json({ error: "You can't remove your own system-administrator status." }, { status: 400 });
+  }
   try {
     const updated = await setSettings(userId, partial);
     return NextResponse.json(updated);

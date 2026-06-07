@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { pathWithBase } from "@/lib/base-path";
 
 type AuthProviderLabel = "Dewey account" | "Google" | "Microsoft" | "Apple";
@@ -28,6 +29,8 @@ type UserWithSettings = {
 const THEME_OPTIONS = ["light", "dark", "muted-green", "gray", "muted-orange", "forest", "muted-blue"];
 
 export function AdminUserManager() {
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id ? parseInt(session.user.id, 10) : null;
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +39,6 @@ export function AdminUserManager() {
   const [saving, setSaving] = useState(false);
   const [ragCollectionOptions, setRagCollectionOptions] = useState<string[]>([]);
   const [ragCollectionsLoading, setRagCollectionsLoading] = useState(false);
-  const [modelOptions, setModelOptions] = useState<string[]>([]);
-  const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -71,7 +72,6 @@ export function AdminUserManager() {
       setEditData(data);
       setEditingUserId(userId);
       setRagCollectionOptions([]);
-      setModelOptions([]);
     } catch {
       setEditData(null);
       setEditingUserId(null);
@@ -79,7 +79,6 @@ export function AdminUserManager() {
   }, []);
 
   const ragServerUrl = editData?.settings?.ragServerUrl as string | undefined;
-  const ollamaUrl = editData?.settings?.ollamaUrl as string | undefined;
   useEffect(() => {
     const url = typeof ragServerUrl === "string" ? ragServerUrl.trim() : "";
     if (!url) {
@@ -107,35 +106,6 @@ export function AdminUserManager() {
     return () => { cancelled = true; };
   }, [ragServerUrl]);
 
-  useEffect(() => {
-    const url = typeof ollamaUrl === "string" ? ollamaUrl.trim() : "";
-    if (!url) {
-      setModelOptions([]);
-      return;
-    }
-    let cancelled = false;
-    setModelOptionsLoading(true);
-    fetch(pathWithBase("/api/chat/ollama/tags"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ollamaUrl: url }),
-    })
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((d: { models?: { name?: string }[] }) => {
-        if (cancelled) return;
-        const list = d.models && Array.isArray(d.models)
-          ? d.models.map((m) => m?.name ?? "").filter(Boolean)
-          : [];
-        setModelOptions(list);
-      })
-      .catch(() => {
-        if (!cancelled) setModelOptions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setModelOptionsLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [ollamaUrl]);
 
   const closeEdit = useCallback(() => {
     setEditingUserId(null);
@@ -222,53 +192,22 @@ export function AdminUserManager() {
               )}
             </h2>
             <div className="space-y-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!(editData.settings.is_system_admin as boolean)}
-                  onChange={(e) => updateEdit({ is_system_admin: e.target.checked })}
-                />
-                <span>System administrator</span>
-              </label>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ollama URL</label>
-                <input
-                  type="url"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  placeholder="http://localhost:11434"
-                  value={(editData.settings.ollamaUrl as string) ?? ""}
-                  onChange={(e) => updateEdit({ ollamaUrl: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Model
-                  {modelOptionsLoading && <span className="ml-2 text-gray-500 text-xs">(loading…)</span>}
-                </label>
-                <select
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  value={(editData.settings.model as string) ?? ""}
-                  onChange={(e) => updateEdit({ model: e.target.value })}
-                >
-                  <option value="">Select model (set Ollama URL first)</option>
-                  {(editData.settings.model as string) && !modelOptions.includes((editData.settings.model as string) ?? "") && (
-                    <option value={editData.settings.model as string}>{editData.settings.model as string} (not in list)</option>
-                  )}
-                  {modelOptions.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">RAG server URL</label>
-                <input
-                  type="url"
-                  className="w-full border border-gray-300 rounded px-3 py-2"
-                  placeholder="http://localhost:9042"
-                  value={(editData.settings.ragServerUrl as string) ?? ""}
-                  onChange={(e) => updateEdit({ ragServerUrl: e.target.value })}
-                />
-              </div>
+              {(() => {
+                const editingSelf = currentUserId !== null && editData.user.id === currentUserId;
+                const isAdmin = !!(editData.settings.is_system_admin as boolean);
+                const disableUncheck = editingSelf && isAdmin;
+                return (
+                  <label className="flex items-center gap-2" title={disableUncheck ? "You can't remove your own system-administrator status." : undefined}>
+                    <input
+                      type="checkbox"
+                      checked={isAdmin}
+                      disabled={disableUncheck}
+                      onChange={(e) => updateEdit({ is_system_admin: e.target.checked })}
+                    />
+                    <span>System administrator{disableUncheck && <span className="text-xs text-gray-500 ml-1">(locked for your own account)</span>}</span>
+                  </label>
+                );
+              })()}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">RAG similarity threshold (0–1)</label>
                 <input
