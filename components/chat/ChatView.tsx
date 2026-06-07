@@ -1711,7 +1711,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: classificationPrompt, stream: false }),
+        body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: classificationPrompt, stream: false, options: { temperature: 0 } }),
       });
       const genData = await genRes.json().catch(() => ({}));
       let raw = ((genData.response ?? genData.message ?? "") + "").trim();

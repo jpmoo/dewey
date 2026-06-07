@@ -21,6 +21,8 @@ export function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +79,27 @@ export function AdminSettings() {
       setSaving(false);
     }
   }, [draft, debugConsole, applyToAll, load]);
+
+  const importFromEnvLocal = useCallback(async () => {
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const res = await fetch(pathWithBase("/api/admin/settings/import-env-local"), { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      const copied = Array.isArray(data.copied) ? (data.copied as string[]) : [];
+      if (copied.length === 0) {
+        setImportMessage("Nothing to import — all settings already present.");
+      } else {
+        setImportMessage(`Imported ${copied.length} value${copied.length === 1 ? "" : "s"} from .env.local: ${copied.join(", ")}`);
+        await load();
+      }
+    } catch (e) {
+      setImportMessage(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [load]);
 
   if (loading) return <p className="text-dewey-mute">Loading settings…</p>;
 
@@ -142,6 +165,24 @@ export function AdminSettings() {
         {message && (
           <span className="text-sm text-dewey-mute">{message}</span>
         )}
+      </div>
+      <div className="mt-6 pt-4 border-t border-dewey-border">
+        <p className="text-sm text-dewey-mute mb-2">
+          One-time: copy any blank settings here from <code className="text-xs bg-gray-100 px-1 rounded">.env.local</code>. Existing values are left alone.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+            onClick={importFromEnvLocal}
+            disabled={importing}
+          >
+            {importing ? "Importing…" : "Import from .env.local"}
+          </button>
+          {importMessage && (
+            <span className="text-sm text-dewey-mute">{importMessage}</span>
+          )}
+        </div>
       </div>
     </section>
   );
