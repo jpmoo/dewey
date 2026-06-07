@@ -1090,9 +1090,7 @@ Return your response as JSON in the following format:
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
       const inOpenConversationArc = (arcOverride ?? coachingArc) === "open_conversation";
-      recordModelUse(
-        `${inOpenConversationArc ? "Open conversation" : "Coaching + phase determination"} — ${coachingModelLabel(coachingModel)}`
-      );
+      const coachingRoleLabel = inOpenConversationArc ? "Open conversation" : "Coaching + phase determination";
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1108,6 +1106,13 @@ Return your response as JSON in the following format:
         if (!claudeRes.ok && (claudeData as { invalidJson?: boolean }).invalidJson) {
           ({ res: claudeRes, data: claudeData } = await callClaude());
         }
+        // Server-confirmed coaching model — the dispatcher echoes the actual backend+model it called (Claude or Ollama).
+        const confirmedBackend = typeof claudeData.backend === "string" ? claudeData.backend : "";
+        const confirmedModel = typeof claudeData.model === "string" ? claudeData.model : "";
+        const coachingActualLabel = confirmedBackend && confirmedModel
+          ? coachingModelLabel(`${confirmedBackend}:${confirmedModel}`)
+          : `${coachingModelLabel(coachingModel)} (unconfirmed)`;
+        recordModelUse(`${coachingRoleLabel} — ${coachingActualLabel}`);
         if (!claudeRes.ok) {
           // Suppress the invalid-JSON error from the chat — the retries are exhausted; clear loading and let the user resend.
           if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
@@ -1293,7 +1298,6 @@ Return your response as JSON in the following format:
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
-      recordModelUse(`Open conversation — ${coachingModelLabel(coachingModel)}`);
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1308,6 +1312,12 @@ Return your response as JSON in the following format:
         if (!claudeRes.ok && (claudeData as { invalidJson?: boolean }).invalidJson) {
           ({ res: claudeRes, data: claudeData } = await callClaude());
         }
+        const confirmedBackend = typeof claudeData.backend === "string" ? claudeData.backend : "";
+        const confirmedModel = typeof claudeData.model === "string" ? claudeData.model : "";
+        const openConvActualLabel = confirmedBackend && confirmedModel
+          ? coachingModelLabel(`${confirmedBackend}:${confirmedModel}`)
+          : `${coachingModelLabel(coachingModel)} (unconfirmed)`;
+        recordModelUse(`Open conversation — ${openConvActualLabel}`);
         if (!claudeRes.ok) {
           if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
             setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
@@ -1375,7 +1385,6 @@ Return your response as JSON in the following format:
   const checkComplianceAllows = useCallback(async (screeningContent: string): Promise<boolean> => {
     if (!selectedModel?.trim() || !ollamaUrl.trim()) return true;
     const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
-    recordModelUse(`Compliance screen — Ollama ${selectedModel}`);
     try {
       const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1389,10 +1398,14 @@ Return your response as JSON in the following format:
         }),
       });
       const compData = await compRes.json().catch(() => ({}));
+      // Server-confirmed model — Ollama echoes the model it actually loaded in the response.
+      const usedModel = typeof compData.model === "string" && compData.model ? compData.model : `${selectedModel} (unconfirmed)`;
+      recordModelUse(`Compliance screen — Ollama ${usedModel}`);
       const raw = ((compData.response ?? "") + "").trim();
       const isBlock = /^block\s/i.test(raw) || raw.toUpperCase().startsWith("BLOCK");
       return !isBlock;
     } catch {
+      recordModelUse(`Compliance screen — Ollama ${selectedModel} (call failed)`);
       return true;
     }
   }, [selectedModel, ollamaUrl, recordModelUse]);
@@ -1437,13 +1450,14 @@ CONVERSATION SO FAR:
 ${transcript}
 
 Reply with one key only.`;
-        recordModelUse(`Mid-conversation arc check — Ollama ${selectedModel}`);
         const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt, stream: false, options: { temperature: 0 } }),
         });
         const genData = await genRes.json().catch(() => ({}));
+        const reclassifyUsed = typeof genData.model === "string" && genData.model ? genData.model : `${selectedModel} (unconfirmed)`;
+        recordModelUse(`Mid-conversation arc check — Ollama ${reclassifyUsed}`);
         const raw = ((genData.response ?? genData.message ?? "") + "").trim();
         const firstLine = raw.split(/\n/)[0]?.trim().toLowerCase() ?? "";
         const validNames = new Set(arcs.map((a) => a.name.toLowerCase()));
@@ -1640,7 +1654,6 @@ ${userBlock}
 
 Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply. If nothing else fits, reply open_conversation.`;
 
-      recordModelUse(`Arc classification — Ollama ${selectedModel}`);
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1652,6 +1665,8 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         }),
       });
       const genData = await genRes.json().catch(() => ({}));
+      const classifyUsed = typeof genData.model === "string" && genData.model ? genData.model : `${selectedModel} (unconfirmed)`;
+      recordModelUse(`Arc classification — Ollama ${classifyUsed}`);
       let raw = ((genData.response ?? genData.message ?? "") + "").trim();
       if (!raw && !genRes.ok) {
         const err = (genData as { error?: string }).error;
@@ -1807,13 +1822,14 @@ ${userBlock}
 
 Reply with exactly one key. If nothing else fits, reply open_conversation.`;
 
-      recordModelUse(`Arc re-classification — Ollama ${selectedModel}`);
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ollamaUrl: ollamaUrl.trim(), model: selectedModel, prompt: classificationPrompt, stream: false, options: { temperature: 0 } }),
       });
       const genData = await genRes.json().catch(() => ({}));
+      const reclassifyUsed = typeof genData.model === "string" && genData.model ? genData.model : `${selectedModel} (unconfirmed)`;
+      recordModelUse(`Arc re-classification — Ollama ${reclassifyUsed}`);
       let raw = ((genData.response ?? genData.message ?? "") + "").trim();
       if (!raw && !genRes.ok) {
         const err = (genData as { error?: string }).error;
