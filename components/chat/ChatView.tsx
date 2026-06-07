@@ -330,7 +330,7 @@ export function ChatView() {
       userContext.trim().length > 0,
     [userPreferredName, userSchoolOrOffice, userRole, userContext]
   );
-  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string; moves_used?: string[] }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; arc?: string; phase?: string; moves_used?: string[]; model_trail?: string[] }[]>([]);
   const [citations, setCitations] = useState<{ sourceName: string; url: string; similarity?: number }[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
@@ -382,6 +382,34 @@ export function ChatView() {
   const debugLog = useCallback((...args: unknown[]) => {
     if (debugConsoleRef.current || debugOverride) console.log(...args);
   }, [debugOverride]);
+
+  /**
+   * Ordered list of model calls made while producing the current assistant turn.
+   * Cleared at the top of every user-input handler (sendMessage / submitIntro /
+   * submitClarification), appended to at each call site, and snapshotted onto
+   * the assistant message when it lands in chatHistory so the debug strip can
+   * render it.
+   */
+  const modelTrailRef = useRef<string[]>([]);
+  const recordModelUse = useCallback((label: string) => {
+    modelTrailRef.current.push(label);
+  }, []);
+  const resetModelTrail = useCallback(() => {
+    modelTrailRef.current = [];
+  }, []);
+  const snapshotModelTrail = useCallback((): string[] => [...modelTrailRef.current], []);
+  /** Render the coachingModel setting ("claude:claude-sonnet-4-6", "ollama:mistral:instruct", or empty) as a human-readable label for the debug trail. */
+  const coachingModelLabel = useCallback((cm: string): string => {
+    const s = (cm || "").trim();
+    if (!s) return "Claude claude-sonnet-4-6 (default)";
+    const i = s.indexOf(":");
+    if (i === -1) return s;
+    const backend = s.slice(0, i).toLowerCase();
+    const model = s.slice(i + 1);
+    if (backend === "claude") return `Claude ${model}`;
+    if (backend === "ollama") return `Ollama ${model}`;
+    return s;
+  }, []);
 
   /** Last RAG/RAGDoll failures this session; shown in Resources modal when admin debug is on */
   const [ragDollDebugErrors, setRagDollDebugErrors] = useState<string[]>([]);
@@ -1021,6 +1049,7 @@ Return your response as JSON in the following format:
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
+      recordModelUse(`Coaching + phase determination — ${coachingModelLabel(coachingModel)}`);
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1080,7 +1109,7 @@ Return your response as JSON in the following format:
         const arcDisplayForMessage = arcMachine
           ? (arcDefRows.find((a) => a.machine_name === arcMachine)?.display_name ?? arcMachine.replace(/_/g, " "))
           : undefined;
-        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage, moves_used: movesUsed }]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: response, arc: arcDisplayForMessage, phase: phaseLabelForMessage, moves_used: movesUsed, model_trail: snapshotModelTrail() }]);
 
         const citedSources = new Map<string, { sourceName: string; url: string; similarity?: number }>();
         for (const rawIdx of ragSourcesUsed) {
@@ -1221,6 +1250,7 @@ Return your response as JSON in the following format:
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
+      recordModelUse(`Open conversation — ${coachingModelLabel(coachingModel)}`);
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1264,6 +1294,7 @@ Return your response as JSON in the following format:
             content: response,
             arc: OPEN_CONVERSATION_DEBUG_LABEL,
             phase: OPEN_CONVERSATION_DEBUG_LABEL,
+            model_trail: snapshotModelTrail(),
           },
         ]);
 
@@ -1301,6 +1332,7 @@ Return your response as JSON in the following format:
   const checkComplianceAllows = useCallback(async (screeningContent: string): Promise<boolean> => {
     if (!selectedModel?.trim() || !ollamaUrl.trim()) return true;
     const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
+    recordModelUse(`Compliance screen — Ollama ${selectedModel}`);
     try {
       const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1320,7 +1352,7 @@ Return your response as JSON in the following format:
     } catch {
       return true;
     }
-  }, [selectedModel, ollamaUrl]);
+  }, [selectedModel, ollamaUrl, recordModelUse]);
 
   /**
    * Mid-conversation reclassifier: while in open conversation, look at the running transcript plus the
@@ -1362,6 +1394,7 @@ CONVERSATION SO FAR:
 ${transcript}
 
 Reply with one key only.`;
+        recordModelUse(`Mid-conversation arc check — Ollama ${selectedModel}`);
         const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1390,6 +1423,7 @@ Reply with one key only.`;
   const sendMessage = useCallback(async (optionalMessage?: string) => {
     const text = optionalMessage != null ? String(optionalMessage).trim() : inputValue.trim();
     if (!text || loading) return;
+    resetModelTrail();
 
     const inCoachingMode = coachingArc && !sessionFinished;
     const inOpenMode = !coachingArc && arcClassificationResult?.arc === "open_conversation";
@@ -1455,6 +1489,7 @@ Reply with one key only.`;
 
   const submitIntro = useCallback(async () => {
     setIntroSubmitError(null);
+    resetModelTrail();
     const text = introDraft.trim();
     const hasName = userPreferredName.trim().length > 0;
     const hasSchool = userSchoolOrOffice.trim().length > 0;
@@ -1548,6 +1583,7 @@ ${userBlock}
 
 Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply. If nothing else fits, reply open_conversation.`;
 
+      recordModelUse(`Arc classification — Ollama ${selectedModel}`);
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1663,6 +1699,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
 
   /** Re-run arc classification with enriched dilemma (original + clarification); on single arc start coaching. */
   const submitClarification = useCallback(async () => {
+    resetModelTrail();
     const clarification = clarifyingInputValue.trim();
     const base = lastDilemmaForClarification.trim();
     if (!base || !selectedModel?.trim() || !ollamaUrl?.trim()) return;
@@ -1713,6 +1750,7 @@ ${userBlock}
 
 Reply with exactly one key. If nothing else fits, reply open_conversation.`;
 
+      recordModelUse(`Arc re-classification — Ollama ${selectedModel}`);
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1962,9 +2000,14 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                     msg.content
                   )}
                 </div>
-                {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase) && (
+                {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase || (msg.model_trail && msg.model_trail.length > 0)) && (
                   <div className="chat-turn-context chat-turn-context--debug" role="status">
-                    DEBUG ARC PHASE - {[msg.arc, msg.phase].filter(Boolean).join(" : ")}
+                    {(msg.arc || msg.phase) && (
+                      <div>DEBUG ARC PHASE - {[msg.arc, msg.phase].filter(Boolean).join(" : ")}</div>
+                    )}
+                    {msg.model_trail && msg.model_trail.length > 0 && msg.model_trail.map((line, j) => (
+                      <div key={j}>↳ {line}</div>
+                    ))}
                   </div>
                 )}
               </div>
