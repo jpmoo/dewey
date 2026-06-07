@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getSettings, setSettings } from "@/lib/settings";
 
+// Settings change when an admin edits Default Ollama model / coaching model / RAG URL etc.
+// — chat clients refetch this on focus and need to see those changes immediately.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {

@@ -556,6 +556,38 @@ export function ChatView() {
     setRagDollDebugErrors([]);
   }, [sessionStatus, session?.user?.id]);
 
+  /** Refetch the globally-managed settings (Ollama URL, coaching model, RAG URL) on focus / visibility so an admin change in another tab is picked up without a page reload. */
+  useEffect(() => {
+    if (sessionStatus !== "authenticated" || !session?.user?.id) return;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch(pathWithBase("/api/chat/settings"), { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (typeof data.ollamaUrl === "string") setOllamaUrl(data.ollamaUrl);
+        if (typeof data.coachingModel === "string") setCoachingModel(data.coachingModel);
+        if (typeof data.ragServerUrl === "string") setRagUrl(data.ragServerUrl);
+      } catch {
+        // swallow — focus refresh is best-effort
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onFocus = () => refresh();
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [sessionStatus, session?.user?.id]);
+
   /** Intro modal: expand/collapse "About you" — expanded when any field empty; collapsed by default when all filled; auto-expand if user clears a field. */
   useEffect(() => {
     if (!showIntroModal) {
