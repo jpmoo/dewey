@@ -17,12 +17,9 @@ export const ADMIN_ENV_KEYS: { key: string; obscure: boolean; label?: string }[]
     obscure: true,
     label: "Anthropic API key (Claude — https://api.anthropic.com)",
   },
-  {
-    key: "DEWEY_RAG_SERVER_LOG",
-    obscure: false,
-    label: "Log RAG/RAGDoll proxy requests to server stdout (true/false; also on when debug messages is on)",
-  },
   { key: "DEWEY_DEBUG_CONSOLE", obscure: false, label: "Show debug messages and info (on/off)" },
+  // DEWEY_RAG_SERVER_LOG is still honored by lib/rag-proxy-log.ts as an env-only override,
+  // but isn't surfaced in the admin UI — the debug-console toggle covers the common case.
 ];
 
 function getEnvLocalPath(): string {
