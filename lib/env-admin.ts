@@ -160,9 +160,18 @@ export async function writeRuntimeConfig(partial: RuntimeConfig): Promise<void> 
 }
 
 /** Resolve whether debug console is on: runtime config overrides env. */
+function isTruthyString(v: string | undefined): boolean {
+  if (!v) return false;
+  const s = v.toLowerCase().trim();
+  return s === "true" || s === "1" || s === "on";
+}
+
 export async function getDebugConsoleServer(): Promise<boolean> {
   const runtime = await readRuntimeConfig();
   if (typeof runtime.debugConsole === "boolean") return runtime.debugConsole;
-  const v = process.env.DEWEY_DEBUG_CONSOLE?.toLowerCase();
-  return v === "true" || v === "1" || v === "on";
+  // Fall back through the same chain getRuntimeEnvSync uses, so a value that
+  // landed in runtime.env (e.g. via the now-removed .env.local import) is
+  // honored even when the boolean field was never set.
+  if (isTruthyString(runtime.env?.DEWEY_DEBUG_CONSOLE)) return true;
+  return isTruthyString(process.env.DEWEY_DEBUG_CONSOLE);
 }
