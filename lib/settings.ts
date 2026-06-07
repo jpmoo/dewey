@@ -74,11 +74,14 @@ export async function getSettings(userId: string): Promise<ChatSettings> {
     [uid]
   );
   const settings = rowToSettings(res.rows[0] ?? null);
-  // ollamaUrl, ragServerUrl, and model are global: the admin runtime config wins over any per-user value still sitting in user_settings.
   const adminDefaults = getDefaultSettingsFromEnv();
+  // ollamaUrl, ragServerUrl, and model are global: the admin runtime config wins over any per-user value still sitting in user_settings.
   if (adminDefaults.ollamaUrl) settings.ollamaUrl = adminDefaults.ollamaUrl;
   if (adminDefaults.ragServerUrl) settings.ragServerUrl = adminDefaults.ragServerUrl;
   if (adminDefaults.model) settings.model = adminDefaults.model;
+  // coachingModel is per-user — but if the user hasn't set their own, fall back to the admin default
+  // so changing it in admin without ticking "apply to all" still takes effect for users with no override.
+  if (!settings.coachingModel && adminDefaults.coachingModel) settings.coachingModel = adminDefaults.coachingModel;
   return settings;
 }
 

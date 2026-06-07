@@ -1049,7 +1049,10 @@ Return your response as JSON in the following format:
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
-      recordModelUse(`Coaching + phase determination — ${coachingModelLabel(coachingModel)}`);
+      const inOpenConversationArc = (arcOverride ?? coachingArc) === "open_conversation";
+      recordModelUse(
+        `${inOpenConversationArc ? "Open conversation" : "Coaching + phase determination"} — ${coachingModelLabel(coachingModel)}`
+      );
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -2008,7 +2011,14 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                 {msg.role === "assistant" && showDebugInfo && (msg.arc || msg.phase || (msg.model_trail && msg.model_trail.length > 0)) && (
                   <div className="chat-turn-context chat-turn-context--debug" role="status">
                     {(msg.arc || msg.phase) && (
-                      <div>DEBUG ARC PHASE - {[msg.arc, msg.phase].filter(Boolean).join(" : ")}</div>
+                      <div>
+                        DEBUG ARC PHASE - {(() => {
+                          const parts = [msg.arc, msg.phase].filter(Boolean) as string[];
+                          // Collapse "Open conversation : Open conversation" → "Open conversation".
+                          const uniq = parts[0] === parts[1] ? [parts[0]] : parts;
+                          return uniq.join(" : ");
+                        })()}
+                      </div>
                     )}
                     {msg.model_trail && msg.model_trail.length > 0 && msg.model_trail.map((line, j) => (
                       <div key={j}>↳ {line}</div>
