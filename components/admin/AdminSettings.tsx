@@ -35,6 +35,8 @@ export function AdminSettings() {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [warming, setWarming] = useState(false);
+  const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +117,30 @@ export function AdminSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  /** Call the server-side warmup endpoint. Returns true on success. Used both by the manual button and the auto-warm-on-save flow. */
+  const warmupModels = useCallback(async (): Promise<boolean> => {
+    setWarming(true);
+    setWarmupMessage(null);
+    try {
+      const res = await fetch(pathWithBase("/api/admin/settings/warmup-models"), { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Warmup failed");
+      const results = Array.isArray(data.results) ? (data.results as { model: string; ok: boolean; ms: number; error?: string }[]) : [];
+      if (results.length === 0) {
+        setWarmupMessage(typeof data.note === "string" ? data.note : "No Ollama models configured to warm.");
+      } else {
+        const lines = results.map((r) => `${r.model}: ${r.ok ? `loaded in ${(r.ms / 1000).toFixed(1)}s` : `failed (${r.error ?? "unknown"})`}`);
+        setWarmupMessage(lines.join(" — "));
+      }
+      return data.ok === true;
+    } catch (e) {
+      setWarmupMessage(e instanceof Error ? e.message : "Warmup failed");
+      return false;
+    } finally {
+      setWarming(false);
+    }
+  }, []);
+
   const save = useCallback(async () => {
     setSaving(true);
     setMessage(null);
@@ -132,12 +158,14 @@ export function AdminSettings() {
       }
       setMessage("Saved. Changes take effect immediately.");
       await load();
+      // Auto-warm in the background — don't block the success state, just kick it off.
+      void warmupModels();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
-  }, [draft, debugConsole, applyToAll, load]);
+  }, [draft, debugConsole, applyToAll, load, warmupModels]);
 
   if (loading) return <p className="text-dewey-mute">Loading settings…</p>;
 
@@ -273,6 +301,20 @@ export function AdminSettings() {
         </button>
         {message && (
           <span className="text-sm text-dewey-mute">{message}</span>
+        )}
+      </div>
+      <div className="mt-4 flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+          onClick={warmupModels}
+          disabled={warming}
+          title="POST an empty prompt with keep_alive=-1 so Ollama holds the model in VRAM. Runs automatically after Save."
+        >
+          {warming ? "Warming…" : "Warm up Ollama models"}
+        </button>
+        {warmupMessage && (
+          <span className="text-sm text-dewey-mute">{warmupMessage}</span>
         )}
       </div>
     </section>
