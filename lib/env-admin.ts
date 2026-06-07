@@ -88,16 +88,19 @@ export async function writeEnvLocal(updates: Record<string, string>): Promise<vo
   await writeFile(getEnvLocalPath(), serializeEnv(current), "utf-8");
 }
 
-/** Get env entries for admin: list of { key, value, obscured }. */
+/**
+ * Get env entries for admin: list of { key, value, obscured }.
+ * Precedence matches getRuntimeEnvSync at read time: runtime config (dewey-runtime.json)
+ * → .env.local → process.env. Runtime config is the authoritative source the admin UI
+ * actually writes to; without this, after a value was moved out of .env.local during the
+ * earlier import-and-strip migration, the UI would show the field as blank even though
+ * the running app reads a non-empty value from the runtime config.
+ */
 export async function getAdminEnvEntries(): Promise<{ key: string; value: string; obscured: boolean; label?: string }[]> {
-  const current = await readEnvLocal();
-  const fromProcess = new Map<string, string>();
-  for (const { key } of ADMIN_ENV_KEYS) {
-    const v = process.env[key];
-    if (v !== undefined) fromProcess.set(key, v);
-  }
+  const [fromEnvLocal, runtime] = await Promise.all([readEnvLocal(), readRuntimeConfig()]);
+  const runtimeEnv = (runtime.env ?? {}) as Record<string, string>;
   return ADMIN_ENV_KEYS.map(({ key, obscure, label }) => {
-    const value = current.get(key) ?? fromProcess.get(key) ?? "";
+    const value = (runtimeEnv[key] ?? "").trim() || fromEnvLocal.get(key) || process.env[key] || "";
     return {
       key,
       value: obscure && value ? "*****" : value,
