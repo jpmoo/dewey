@@ -351,6 +351,8 @@ export function ChatView() {
   const [introAboutExpanded, setIntroAboutExpanded] = useState(true);
   const [summarizingStatus, setSummarizingStatus] = useState<null | "summarizing" | "done" | "error">(null);
   const [arcClassificationResult, setArcClassificationResult] = useState<{ arc: string; arcs?: string[]; question?: string; raw?: string } | null>(null);
+  /** Snapshot of the model trail at the moment the classifier asked a clarifying question — let us render the debug strip with that bubble even though it's not a chatHistory entry. */
+  const [arcClassificationModelTrail, setArcClassificationModelTrail] = useState<string[]>([]);
   /** Coaching workflow (spec): arc + phase sequence and current index; null when not in a coaching session */
   const [coachingArc, setCoachingArc] = useState<string | null>(null);
   const [phaseSequence, setPhaseSequence] = useState<string[]>([]);
@@ -548,7 +550,7 @@ export function ChatView() {
     setCurrentPhaseIndex(0);
     setSessionFinished(false);
     setFinishedCallbackInvitation(null);
-    setArcClassificationResult(null);
+    setArcClassificationResult(null); setArcClassificationModelTrail([]);
     setLastDilemmaForClarification("");
     setClarifyingInputValue("");
     setShowIntroValidation(false);
@@ -1603,7 +1605,7 @@ Reply with one key only.`;
         return;
       }
       setIntroDraft("");
-      setArcClassificationResult(null);
+      setArcClassificationResult(null); setArcClassificationModelTrail([]);
       const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
@@ -1723,6 +1725,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
         }
       }
       setArcClassificationResult({ arc, arcs: selectedArcs?.length ? selectedArcs : undefined, question: displayQuestion, raw: raw.slice(0, 400) });
+      setArcClassificationModelTrail(snapshotModelTrail());
       setLastDilemmaForClarification(text);
 
       const validSingleArc = arc && arc !== "ERROR" && !arc.startsWith("UNKNOWN") && !(selectedArcs && selectedArcs.length > 1);
@@ -2123,15 +2126,30 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
               </div>
             )}
             {arcClassificationResult && (arcClassificationResult.arcs?.length ?? 0) > 1 && (
-              <div className="chat-message assistant">
-                <div className="chat-bubble">
-                  {arcClassificationResult.question ? (
-                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(arcClassificationResult.question) }} />
-                  ) : (
-                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(userPreferredName.trim() ? `${userPreferredName.trim()}, which of these feels closer? Add a note below and send.` : "Which of these feels closer? Add a note below and send.") }} />
+              <>
+                {lastDilemmaForClarification.trim() && (
+                  <div className="chat-message user">
+                    <div className="chat-bubble">{lastDilemmaForClarification}</div>
+                  </div>
+                )}
+                <div className="chat-message assistant">
+                  <div className="chat-bubble">
+                    {arcClassificationResult.question ? (
+                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(arcClassificationResult.question) }} />
+                    ) : (
+                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(userPreferredName.trim() ? `${userPreferredName.trim()}, which of these feels closer? Add a note below and send.` : "Which of these feels closer? Add a note below and send.") }} />
+                    )}
+                  </div>
+                  {showDebugInfo && arcClassificationModelTrail.length > 0 && (
+                    <div className="chat-turn-context chat-turn-context--debug" role="status">
+                      <div>DEBUG ARC PHASE - Asking for clarification (no single arc yet)</div>
+                      {arcClassificationModelTrail.map((line, j) => (
+                        <div key={j}>↳ {line}</div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
+              </>
             )}
             {arcClassificationResult && (arcClassificationResult.arc === "ERROR" || arcClassificationResult.arc.startsWith("UNKNOWN")) && (
               <div className="chat-message assistant">
@@ -2162,7 +2180,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                         setCurrentPhaseIndex(0);
                         setSessionFinished(false);
                         setFinishedCallbackInvitation(null);
-                        setArcClassificationResult(null);
+                        setArcClassificationResult(null); setArcClassificationModelTrail([]);
                         setLastDilemmaForClarification("");
                         setShowIntroModal(true);
                         setIntroDraft("");
@@ -2523,7 +2541,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   setIntroDraft("");
                   setShowIntroValidation(false);
                   setIntroSubmitError(null);
-                  setArcClassificationResult(null);
+                  setArcClassificationResult(null); setArcClassificationModelTrail([]);
                 }}
               >
                 Start new conversation
