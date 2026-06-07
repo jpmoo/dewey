@@ -30,8 +30,8 @@ export function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -139,30 +139,21 @@ export function AdminSettings() {
     }
   }, [draft, debugConsole, applyToAll, load]);
 
-  const importFromEnvLocal = useCallback(async () => {
-    setImporting(true);
-    setImportMessage(null);
+  const clearPerUserGlobals = useCallback(async () => {
+    setClearing(true);
+    setClearMessage(null);
     try {
-      const res = await fetch(pathWithBase("/api/admin/settings/import-env-local"), { method: "POST" });
+      const res = await fetch(pathWithBase("/api/admin/settings/clear-per-user-globals"), { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      const copied = Array.isArray(data.copied) ? (data.copied as string[]) : [];
-      const removed = Array.isArray(data.removedFromEnvLocal) ? (data.removedFromEnvLocal as string[]) : [];
-      const parts: string[] = [];
-      if (copied.length > 0) {
-        parts.push(`Imported ${copied.length} value${copied.length === 1 ? "" : "s"} into runtime config: ${copied.join(", ")}.`);
-      }
-      if (removed.length > 0) {
-        parts.push(`Removed ${removed.length} duplicate${removed.length === 1 ? "" : "s"} from .env.local: ${removed.join(", ")}.`);
-      }
-      setImportMessage(parts.length > 0 ? parts.join(" ") : "Nothing to import — all settings already present.");
-      if (copied.length > 0 || removed.length > 0) await load();
+      if (!res.ok) throw new Error(data.error || "Clear failed");
+      const rows = typeof data.rowsCleared === "number" ? data.rowsCleared : 0;
+      setClearMessage(rows === 0 ? "Nothing to clear — no users had per-user overrides for those settings." : `Cleared per-user Ollama URL, default model, and RAG server URL on ${rows} user row${rows === 1 ? "" : "s"}.`);
     } catch (e) {
-      setImportMessage(e instanceof Error ? e.message : "Import failed");
+      setClearMessage(e instanceof Error ? e.message : "Clear failed");
     } finally {
-      setImporting(false);
+      setClearing(false);
     }
-  }, [load]);
+  }, []);
 
   if (loading) return <p className="text-dewey-mute">Loading settings…</p>;
 
@@ -302,19 +293,19 @@ export function AdminSettings() {
       </div>
       <div className="mt-6 pt-4 border-t border-dewey-border">
         <p className="text-sm text-dewey-mute mb-2">
-          One-time: copy any blank settings here from <code className="text-xs bg-gray-100 px-1 rounded">.env.local</code>, then strip those duplicate keys out of <code className="text-xs bg-gray-100 px-1 rounded">.env.local</code> so there's one source of truth. Only the keys shown above are touched; auth/infra keys and comments are preserved.
+          One-time: clear any leftover per-user values for the Ollama URL, default model, and RAG server URL. Those settings are global now, so the per-user columns are dead weight — this nulls them out.
         </p>
         <div className="flex items-center gap-3">
           <button
             type="button"
             className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-            onClick={importFromEnvLocal}
-            disabled={importing}
+            onClick={clearPerUserGlobals}
+            disabled={clearing}
           >
-            {importing ? "Importing…" : "Import from .env.local"}
+            {clearing ? "Clearing…" : "Clear per-user copies of global settings"}
           </button>
-          {importMessage && (
-            <span className="text-sm text-dewey-mute">{importMessage}</span>
+          {clearMessage && (
+            <span className="text-sm text-dewey-mute">{clearMessage}</span>
           )}
         </div>
       </div>
