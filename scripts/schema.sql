@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   rag_threshold DOUBLE PRECISION,
   rag_collections JSONB,
   model TEXT,
+  coaching_model TEXT,
   theme TEXT,
   panel_state TEXT,
   chat_font_size INTEGER,

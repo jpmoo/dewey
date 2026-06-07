@@ -10,7 +10,8 @@ export const ADMIN_ENV_KEYS: { key: string; obscure: boolean; label?: string }[]
   { key: "DEWEY_DEFAULT_RAG_SERVER_URL", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_THRESHOLD", obscure: false },
   { key: "DEWEY_DEFAULT_RAG_COLLECTIONS", obscure: false },
-  { key: "DEWEY_DEFAULT_MODEL", obscure: false },
+  { key: "DEWEY_DEFAULT_MODEL", obscure: false, label: "Default Ollama model (compliance / classification)" },
+  { key: "DEWEY_DEFAULT_COACHING_MODEL", obscure: false, label: "Default coaching model (Claude or Ollama; format: \"claude:<id>\" or \"ollama:<name>\")" },
   {
     key: "ANTHROPIC_API_KEY",
     obscure: true,

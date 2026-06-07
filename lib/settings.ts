@@ -7,6 +7,8 @@ export interface ChatSettings {
   ragThreshold?: number;
   ragCollections?: string[];
   model?: string;
+  /** Coaching model identifier with backend prefix: "claude:<id>" or "ollama:<name>". Distinct from `model`, which drives structural Ollama calls (classification, compliance). */
+  coachingModel?: string;
   theme?: string;
   panelState?: string;
   chatFontSize?: number;
@@ -15,6 +17,22 @@ export interface ChatSettings {
   userRole?: string;
   userContext?: string;
   is_system_admin?: boolean;
+}
+
+/** Lazy, idempotent migration for columns added after the original schema.sql. */
+let schemaPromise: Promise<void> | null = null;
+async function ensureSchema(): Promise<void> {
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      const pool = getPool();
+      await pool.query("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS coaching_model TEXT");
+    })().catch((e) => {
+      // Reset so a transient failure (e.g. table not yet created on first install) can retry next call.
+      schemaPromise = null;
+      throw e;
+    });
+  }
+  return schemaPromise;
 }
 
 function parseUserId(userId: string): number {
@@ -33,6 +51,7 @@ function rowToSettings(row: Record<string, unknown> | null): ChatSettings {
     ragThreshold: row.rag_threshold != null ? Number(row.rag_threshold) : undefined,
     ragCollections: ragCollections?.length ? ragCollections : undefined,
     model: row.model != null ? String(row.model) : undefined,
+    coachingModel: row.coaching_model != null ? String(row.coaching_model) : undefined,
     theme: row.theme != null ? String(row.theme) : undefined,
     panelState: row.panel_state != null ? String(row.panel_state) : undefined,
     chatFontSize: row.chat_font_size != null ? Number(row.chat_font_size) : undefined,
@@ -47,8 +66,9 @@ function rowToSettings(row: Record<string, unknown> | null): ChatSettings {
 export async function getSettings(userId: string): Promise<ChatSettings> {
   const uid = parseUserId(userId);
   const pool = getPool();
+  await ensureSchema();
   const res = await pool.query(
-    "SELECT ollama_url, rag_server_url, rag_threshold, rag_collections, model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
+    "SELECT ollama_url, rag_server_url, rag_threshold, rag_collections, model, coaching_model, theme, panel_state, chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin FROM user_settings WHERE user_id = $1 LIMIT 1",
     [uid]
   );
   return rowToSettings(res.rows[0] ?? null);
@@ -79,6 +99,8 @@ export function getDefaultSettingsFromEnv(): Partial<ChatSettings> {
   }
   const defaultModel = getRuntimeEnvSync("DEWEY_DEFAULT_MODEL")?.trim();
   if (defaultModel) out.model = defaultModel;
+  const defaultCoaching = getRuntimeEnvSync("DEWEY_DEFAULT_COACHING_MODEL")?.trim();
+  if (defaultCoaching) out.coachingModel = defaultCoaching;
   return out;
 }
 
@@ -101,6 +123,8 @@ export function getDefaultSettingsFromEnvFile(): Partial<ChatSettings> {
   }
   const defaultModel = getDefaultFromProcessEnv("DEWEY_DEFAULT_MODEL");
   if (defaultModel) out.model = defaultModel;
+  const defaultCoaching = getDefaultFromProcessEnv("DEWEY_DEFAULT_COACHING_MODEL");
+  if (defaultCoaching) out.coachingModel = defaultCoaching;
   return out;
 }
 
@@ -114,20 +138,22 @@ export async function hasSystemAdmin(): Promise<boolean> {
 export async function setSettings(userId: string, partial: Partial<ChatSettings>): Promise<ChatSettings> {
   const uid = parseUserId(userId);
   const pool = getPool();
+  await ensureSchema();
   const current = await getSettings(userId);
   const next: ChatSettings = { ...current, ...partial };
 
   await pool.query(
     `INSERT INTO user_settings (
-      user_id, ollama_url, rag_server_url, rag_threshold, rag_collections, model, theme, panel_state,
+      user_id, ollama_url, rag_server_url, rag_threshold, rag_collections, model, coaching_model, theme, panel_state,
       chat_font_size, user_preferred_name, user_school_or_office, user_role, user_context, is_system_admin, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
     ON CONFLICT (user_id) DO UPDATE SET
       ollama_url = EXCLUDED.ollama_url,
       rag_server_url = EXCLUDED.rag_server_url,
       rag_threshold = EXCLUDED.rag_threshold,
       rag_collections = EXCLUDED.rag_collections,
       model = EXCLUDED.model,
+      coaching_model = EXCLUDED.coaching_model,
       theme = EXCLUDED.theme,
       panel_state = EXCLUDED.panel_state,
       chat_font_size = EXCLUDED.chat_font_size,
@@ -144,6 +170,7 @@ export async function setSettings(userId: string, partial: Partial<ChatSettings>
       next.ragThreshold ?? null,
       next.ragCollections ? JSON.stringify(next.ragCollections) : null,
       next.model ?? null,
+      next.coachingModel ?? null,
       next.theme ?? null,
       next.panelState ?? null,
       next.chatFontSize ?? null,

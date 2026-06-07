@@ -17,6 +17,7 @@ const ENV_KEY_TO_SETTINGS: Record<string, keyof ChatSettings> = {
   DEWEY_DEFAULT_RAG_THRESHOLD: "ragThreshold",
   DEWEY_DEFAULT_RAG_COLLECTIONS: "ragCollections",
   DEWEY_DEFAULT_MODEL: "model",
+  DEWEY_DEFAULT_COACHING_MODEL: "coachingModel",
 };
 
 function envValueToSetting(key: string, value: string): unknown {
@@ -24,6 +25,7 @@ function envValueToSetting(key: string, value: string): unknown {
     case "DEWEY_DEFAULT_OLLAMA_URL":
     case "DEWEY_DEFAULT_RAG_SERVER_URL":
     case "DEWEY_DEFAULT_MODEL":
+    case "DEWEY_DEFAULT_COACHING_MODEL":
       return value.trim() || undefined;
     case "DEWEY_DEFAULT_RAG_THRESHOLD": {
       const n = parseFloat(value);

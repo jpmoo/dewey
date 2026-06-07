@@ -11,6 +11,12 @@ const APPLY_TO_ALL_KEYS: string[] = [
   "DEWEY_DEFAULT_RAG_THRESHOLD",
   "DEWEY_DEFAULT_RAG_COLLECTIONS",
   "DEWEY_DEFAULT_MODEL",
+  "DEWEY_DEFAULT_COACHING_MODEL",
+];
+
+/** Claude variants offered in the coaching-model dropdown. Extend as new IDs ship. */
+const CLAUDE_COACHING_MODELS: { id: string; label: string }[] = [
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
 ];
 
 export function AdminSettings() {
@@ -170,6 +176,7 @@ export function AdminSettings() {
         {env.filter((e) => e.key !== "DEWEY_DEBUG_CONSOLE").map((e) => {
           const canApplyToAll = APPLY_TO_ALL_KEYS.includes(e.key);
           const isModel = e.key === "DEWEY_DEFAULT_MODEL";
+          const isCoachingModel = e.key === "DEWEY_DEFAULT_COACHING_MODEL";
           const currentValue = draft[e.key] ?? e.value;
           // For the model field, ensure the saved/current value is selectable even if it isn't reported by the server right now.
           const modelOptions = isModel
@@ -205,6 +212,43 @@ export function AdminSettings() {
                     {modelsLoading ? "Refreshing…" : "Refresh"}
                   </button>
                 </div>
+              ) : isCoachingModel ? (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    value={currentValue || "claude:claude-sonnet-4-6"}
+                    onChange={(ev) => updateDraft(e.key, ev.target.value)}
+                  >
+                    <optgroup label="Claude (Anthropic)">
+                      {CLAUDE_COACHING_MODELS.map((c) => (
+                        <option key={`claude:${c.id}`} value={`claude:${c.id}`}>{c.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Ollama (local)">
+                      {ollamaModels.length === 0 ? (
+                        <option value="" disabled>{modelsLoading ? "Loading…" : "No Ollama models found"}</option>
+                      ) : (
+                        ollamaModels.map((m) => (
+                          <option key={`ollama:${m}`} value={`ollama:${m}`}>{m}</option>
+                        ))
+                      )}
+                    </optgroup>
+                    {currentValue && !CLAUDE_COACHING_MODELS.some((c) => `claude:${c.id}` === currentValue) && !ollamaModels.some((m) => `ollama:${m}` === currentValue) && (
+                      <optgroup label="Currently set (not in either list)">
+                        <option value={currentValue}>{currentValue}</option>
+                      </optgroup>
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    onClick={loadOllamaModels}
+                    disabled={modelsLoading}
+                    title="Refresh Ollama models"
+                  >
+                    {modelsLoading ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
               ) : (
                 <input
                   type={e.obscured ? "password" : "text"}
@@ -215,7 +259,7 @@ export function AdminSettings() {
                   autoComplete={e.obscured ? "off" : undefined}
                 />
               )}
-              {isModel && modelsError && (
+              {(isModel || isCoachingModel) && modelsError && (
                 <p className="text-xs text-red-600 mt-1">{modelsError}</p>
               )}
               {canApplyToAll && (

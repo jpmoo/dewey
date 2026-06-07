@@ -308,6 +308,8 @@ export function ChatView() {
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [modelContextLength, setModelContextLength] = useState<number | null>(null);
+  /** Coaching model: "claude:<id>" or "ollama:<name>". Empty/falsy → server defaults to claude:claude-sonnet-4-6. */
+  const [coachingModel, setCoachingModel] = useState<string>("");
   const [connected, setConnected] = useState(false);
   const [ragUrl, setRagUrl] = useState("");
   const [ragThreshold, setRagThreshold] = useState(RAG_THRESHOLD_DEFAULT);
@@ -444,6 +446,7 @@ export function ChatView() {
       .then((data) => {
         if (cancelled || !data) return;
         if (typeof data.ollamaUrl === "string") setOllamaUrl(data.ollamaUrl);
+        if (typeof data.coachingModel === "string") setCoachingModel(data.coachingModel);
         if (typeof data.ragServerUrl === "string") setRagUrl(data.ragServerUrl);
         if (typeof data.ragThreshold === "number") setRagThreshold(data.ragThreshold);
         if (Array.isArray(data.ragCollections)) setRagCollections(data.ragCollections);
@@ -1023,7 +1026,7 @@ Return your response as JSON in the following format:
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system: systemMessage, userContent }),
+            body: JSON.stringify({ system: systemMessage, userContent, coachingModel, ollamaUrl: ollamaUrl.trim() }),
           });
           const data = await res.json().catch(() => ({}));
           return { res, data: data as Record<string, unknown> };
@@ -1127,6 +1130,8 @@ Return your response as JSON in the following format:
       userSchoolOrOffice,
       userRole,
       userContext,
+      coachingModel,
+      ollamaUrl,
       appendRagDollDebugError,
       debugLog,
     ]
@@ -1221,7 +1226,7 @@ Return your response as JSON in the following format:
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system: systemMessage, userContent }),
+            body: JSON.stringify({ system: systemMessage, userContent, coachingModel, ollamaUrl: ollamaUrl.trim() }),
           });
           const data = await res.json().catch(() => ({}));
           return { res, data: data as Record<string, unknown> };
@@ -1289,7 +1294,7 @@ Return your response as JSON in the following format:
         setLoading(false);
       }
     },
-    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, appendRagDollDebugError, debugLog]
+    [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, coachingModel, ollamaUrl, appendRagDollDebugError, debugLog]
   );
 
   /** Ollama compliance screen. Returns true if the turn may proceed; false if BLOCK (caller should show modal). On error, allows. */
