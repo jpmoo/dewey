@@ -23,6 +23,9 @@ export function AdminSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +58,53 @@ export function AdminSettings() {
   const toggleApplyToAll = useCallback((key: string, checked: boolean) => {
     setApplyToAll((prev) => ({ ...prev, [key]: checked }));
   }, []);
+
+  /** Current effective Ollama URL: edit-in-progress draft wins, else loaded value. */
+  const effectiveOllamaUrl = useCallback(() => {
+    const fromDraft = (draft.DEWEY_DEFAULT_OLLAMA_URL ?? "").trim();
+    if (fromDraft) return fromDraft;
+    const entry = env.find((e) => e.key === "DEWEY_DEFAULT_OLLAMA_URL");
+    return (entry?.value ?? "").trim();
+  }, [draft, env]);
+
+  const loadOllamaModels = useCallback(async () => {
+    const url = effectiveOllamaUrl();
+    if (!url) {
+      setOllamaModels([]);
+      setModelsError("Set the Ollama URL above first.");
+      return;
+    }
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await fetch(pathWithBase("/api/chat/ollama/tags"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ollamaUrl: url }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+      const list = Array.isArray((body as { models?: unknown[] }).models)
+        ? ((body as { models: { name?: string }[] }).models)
+            .map((m) => (typeof m?.name === "string" ? m.name : ""))
+            .filter((s): s is string => Boolean(s))
+            .sort((a, b) => a.localeCompare(b))
+        : [];
+      setOllamaModels(list);
+      if (list.length === 0) setModelsError("No models reported by the server.");
+    } catch (e) {
+      setOllamaModels([]);
+      setModelsError(e instanceof Error ? e.message : "Failed to load models");
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [effectiveOllamaUrl]);
+
+  // Initial load once the settings come in.
+  useEffect(() => {
+    if (!loading) loadOllamaModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -119,19 +169,55 @@ export function AdminSettings() {
       <div className="space-y-3 max-w-xl">
         {env.filter((e) => e.key !== "DEWEY_DEBUG_CONSOLE").map((e) => {
           const canApplyToAll = APPLY_TO_ALL_KEYS.includes(e.key);
+          const isModel = e.key === "DEWEY_DEFAULT_MODEL";
+          const currentValue = draft[e.key] ?? e.value;
+          // For the model field, ensure the saved/current value is selectable even if it isn't reported by the server right now.
+          const modelOptions = isModel
+            ? Array.from(new Set([currentValue, ...ollamaModels].filter(Boolean)))
+            : [];
           return (
             <div key={e.key}>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 {e.label ?? e.key}
               </label>
-              <input
-                type={e.obscured ? "password" : "text"}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                value={draft[e.key] ?? e.value}
-                onChange={(ev) => updateDraft(e.key, ev.target.value)}
-                placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
-                autoComplete={e.obscured ? "off" : undefined}
-              />
+              {isModel ? (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    value={currentValue}
+                    onChange={(ev) => updateDraft(e.key, ev.target.value)}
+                    disabled={modelsLoading || modelOptions.length === 0}
+                  >
+                    {modelOptions.length === 0 && (
+                      <option value="">{modelsLoading ? "Loading…" : "No models available"}</option>
+                    )}
+                    {modelOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    onClick={loadOllamaModels}
+                    disabled={modelsLoading}
+                    title="Refresh models from the Ollama server"
+                  >
+                    {modelsLoading ? "Refreshing…" : "Refresh"}
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type={e.obscured ? "password" : "text"}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  value={currentValue}
+                  onChange={(ev) => updateDraft(e.key, ev.target.value)}
+                  placeholder={e.obscured ? "Leave unchanged to keep current" : ""}
+                  autoComplete={e.obscured ? "off" : undefined}
+                />
+              )}
+              {isModel && modelsError && (
+                <p className="text-xs text-red-600 mt-1">{modelsError}</p>
+              )}
               {canApplyToAll && (
                 <label className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
                   <input
