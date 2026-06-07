@@ -1525,6 +1525,11 @@ Reply with one key only.`;
       return;
     }
     setLoading(true);
+    // Dismiss the intro modal up front so the user isn't staring at their question
+    // while compliance + classification + the first coaching call run in sequence.
+    // The intro draft hangs around until classification succeeds, so if compliance
+    // blocks we can reopen the modal with their text intact for a quick edit.
+    setShowIntroModal(false);
     try {
       const userBlockCompliance = [
         `Dilemma: ${text}`,
@@ -1537,9 +1542,9 @@ Reply with one key only.`;
       const introComplianceOk = await checkComplianceAllows(introScreeningContent);
       if (!introComplianceOk) {
         setComplianceBlockModal(true);
+        setShowIntroModal(true);
         return;
       }
-      setShowIntroModal(false);
       setIntroDraft("");
       setArcClassificationResult(null);
       const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
