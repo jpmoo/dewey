@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
   try {
     const payload: Record<string, unknown> = { model, prompt, stream };
     if (options && Object.keys(options).length > 0) payload.options = options;
+    // Keep models resident in VRAM between calls (no cold-load latency) and suppress thinking traces
+    // for models that emit them. Callers can override either by passing the field in the body.
+    payload.keep_alive = body.keep_alive ?? "-1";
+    payload.think = typeof body.think === "boolean" ? body.think : false;
     const res = await fetch(`${url.replace(/\/$/, "")}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

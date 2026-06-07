@@ -104,6 +104,9 @@ async function callOllama(ollamaUrl: string, model: string, system: string, user
       stream: false,
       format: "json",
       options: { temperature: 0.3 },
+      // Keep the coaching model resident in VRAM between turns; suppress thinking traces.
+      keep_alive: "-1",
+      think: false,
     }),
   });
   if (!res.ok) {
