@@ -334,6 +334,8 @@ export function ChatView() {
   const [citations, setCitations] = useState<{ sourceName: string; url: string; similarity?: number }[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
+  /** Human-readable label for the current model call so the loading indicator isn't opaque. Cleared when the turn lands. */
+  const [loadingStage, setLoadingStage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState("");
   const [dialogCitedDocs, setDialogCitedDocs] = useState(false);
   const [complianceBlockModal, setComplianceBlockModal] = useState(false);
@@ -556,6 +558,12 @@ export function ChatView() {
     setShowIntroValidation(false);
     setIntroSubmitError(null);
     setRagDollDebugErrors([]);
+  }, [sessionStatus, session?.user?.id]);
+
+  /** Silently warm up Ollama models once signed in, so the first turn doesn't pay a cold-load cost if a model has dropped out of VRAM. Fire-and-forget. */
+  useEffect(() => {
+    if (sessionStatus !== "authenticated" || !session?.user?.id) return;
+    void fetch(pathWithBase("/api/chat/warmup"), { method: "POST" }).catch(() => undefined);
   }, [sessionStatus, session?.user?.id]);
 
   /** Refetch the globally-managed settings (Ollama URL, coaching model, RAG URL) on focus / visibility so an admin change in another tab is picked up without a page reload. */
@@ -902,7 +910,7 @@ export function ChatView() {
       const phaseMachineName = seq[idx];
       if (!phaseMachineName) {
         setChatHistory((prev) => [...prev, { role: "assistant", content: "Error: No phase set for this arc." }]);
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
         return;
       }
       type PhaseDef = { machine_name: string; display_name?: string; objective?: string; ending_criteria?: string; callback_invitation?: string | null };
@@ -929,7 +937,7 @@ export function ChatView() {
       }
       if (!phaseDef) {
         setChatHistory((prev) => [...prev, { role: "assistant", content: "Error: Could not load phase definition." }]);
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
         return;
       }
 
@@ -1109,6 +1117,7 @@ Return your response as JSON in the following format:
 
       const inOpenConversationArc = (arcOverride ?? coachingArc) === "open_conversation";
       const coachingRoleLabel = inOpenConversationArc ? "Open conversation" : "Coaching + phase determination";
+      setLoadingStage("Generating coaching response…");
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1136,7 +1145,7 @@ Return your response as JSON in the following format:
           if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
             setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
           }
-          setLoading(false);
+          setLoading(false); setLoadingStage(null);
           return;
         }
         const response = (claudeData.response ?? "") as string;
@@ -1208,7 +1217,7 @@ Return your response as JSON in the following format:
       } catch (e) {
         setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
       } finally {
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
       }
     },
     [
@@ -1314,6 +1323,7 @@ Return your response as JSON in the following format:
       }
       userContent += "Conversation so far:\n\n" + (transcript || "(none)") + "\n\nCurrent user message:\n\n" + userMessage;
 
+      setLoadingStage("Generating response…");
       try {
         const callClaude = async () => {
           const res = await fetch(pathWithBase("/api/chat/claude/generate"), {
@@ -1338,7 +1348,7 @@ Return your response as JSON in the following format:
           if (!(claudeData as { invalidJson?: boolean }).invalidJson) {
             setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${(claudeData as { error?: string }).error ?? claudeRes.status}` }]);
           }
-          setLoading(false);
+          setLoading(false); setLoadingStage(null);
           return;
         }
         const response = (claudeData.response ?? "") as string;
@@ -1391,7 +1401,7 @@ Return your response as JSON in the following format:
       } catch (e) {
         setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${e instanceof Error ? e.message : "Request failed"}` }]);
       } finally {
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
       }
     },
     [chatHistory, ragUrl, ragCollections, ragThreshold, userPreferredName, userSchoolOrOffice, userRole, userContext, coachingModel, ollamaUrl, appendRagDollDebugError, debugLog]
@@ -1401,6 +1411,7 @@ Return your response as JSON in the following format:
   const checkComplianceAllows = useCallback(async (screeningContent: string): Promise<boolean> => {
     if (!selectedModel?.trim() || !ollamaUrl.trim()) return true;
     const compliancePrompt = COMPLIANCE_SYSTEM_PROMPT + "\n\n--- Conversation to review ---\n\n" + screeningContent;
+    setLoadingStage("Running safety check…");
     try {
       const compRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
@@ -1466,6 +1477,7 @@ CONVERSATION SO FAR:
 ${transcript}
 
 Reply with one key only.`;
+        setLoadingStage("Checking whether to switch coaching paths…");
         const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1503,7 +1515,7 @@ Reply with one key only.`;
 
     if (inCoachingMode) {
       if (!selectedModel || !ollamaUrl.trim()) {
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
         return;
       }
       setLoading(true);
@@ -1518,14 +1530,14 @@ Reply with one key only.`;
       const allowed = await checkComplianceAllows(screeningContent);
       if (!allowed) {
         setComplianceBlockModal(true);
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
         return;
       }
       try {
         await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
       } finally {
         // runCoachingTurn only clears loading inside a try/finally around the Claude call; if anything throws earlier, reset here so Send is not stuck disabled.
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
       }
       return;
     }
@@ -1542,7 +1554,7 @@ Reply with one key only.`;
       const allowed = await checkComplianceAllows(screeningContent);
       if (!allowed) {
         setComplianceBlockModal(true);
-        setLoading(false);
+        setLoading(false); setLoadingStage(null);
         return;
       }
       // Reclassify mid-stream: if the conversation has now landed on a structured arc, switch into it.
@@ -1672,6 +1684,7 @@ ${userBlock}
 
 Reply with one key, or comma-separated keys plus a QUESTION: line when multiple arcs apply. If nothing else fits, reply open_conversation.`;
 
+      setLoadingStage("Classifying your topic…");
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1771,7 +1784,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
-      setLoading(false);
+      setLoading(false); setLoadingStage(null);
     }
   }, [
     introDraft,
@@ -1841,6 +1854,7 @@ ${userBlock}
 
 Reply with exactly one key. If nothing else fits, reply open_conversation.`;
 
+      setLoadingStage("Re-classifying with your clarification…");
       const genRes = await fetch(pathWithBase("/api/chat/ollama/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1911,7 +1925,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
     } catch (e) {
       setArcClassificationResult({ arc: "ERROR", raw: e instanceof Error ? e.message : "Request failed" });
     } finally {
-      setLoading(false);
+      setLoading(false); setLoadingStage(null);
     }
   }, [clarifyingInputValue, lastDilemmaForClarification, selectedModel, ollamaUrl, userPreferredName, userRole, userSchoolOrOffice, userContext, runCoachingTurn, checkComplianceAllows]);
 
@@ -2138,6 +2152,9 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   <div className="typing-dot" />
                   <div className="typing-dot" />
                   <div className="typing-dot" />
+                  {loadingStage && (
+                    <span style={{ marginLeft: 10, fontSize: 13, color: "var(--dewey-mute, #666)" }}>{loadingStage}</span>
+                  )}
                 </div>
               </div>
             )}
