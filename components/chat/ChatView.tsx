@@ -2160,7 +2160,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
                   <div className="typing-dot" />
                   <div className="typing-dot" />
                   {loadingStage && (
-                    <span style={{ marginLeft: 10, fontSize: 13, color: "var(--dewey-mute, #666)" }}>{loadingStage}</span>
+                    <span className="typing-stage">{loadingStage}</span>
                   )}
                 </div>
               </div>
