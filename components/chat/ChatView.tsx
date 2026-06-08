@@ -560,6 +560,17 @@ export function ChatView() {
     setRagDollDebugErrors([]);
   }, [sessionStatus, session?.user?.id]);
 
+  /** Auto-scroll the chat surface to the bottom whenever the conversation grows (new message, typing dots, stage-label change). Uses smooth scroll for incremental updates so it doesn't feel jumpy. */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Use rAF so the scroll happens after the new content has been laid out.
+    const id = requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [chatHistory, loading, loadingStage, arcClassificationResult]);
+
   /** Silently warm up Ollama models once signed in, so the first turn doesn't pay a cold-load cost if a model has dropped out of VRAM. Fire-and-forget. */
   useEffect(() => {
     if (sessionStatus !== "authenticated" || !session?.user?.id) return;
