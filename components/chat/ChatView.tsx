@@ -1051,7 +1051,14 @@ When a citation genuinely earns its place:
 
 If no excerpt is doing real work, leave \`rag_sources_used\` empty and write a clean coaching turn without one. Don't fabricate citations or stretch an irrelevant excerpt to fit.
 
-KEEP MOVING. When the leader has substantially met the phase objective and ending criteria below, mark phase_complete true — do not require multiple rounds of probing.
+KEEP MOVING. Phases are not deep-dives; they are conversational beats. A typical phase runs 3–4 assistant turns, occasionally 5 if the leader keeps generating new material that's directly relevant to the phase objective. By the time you're at turn 4 or 5 in the same phase, you should be ISSUING THE CHECKPOINT (see PHASE-END VALIDATION below), not asking another probing question. Re-read the user content: it tells you the "Assistant turns in this phase so far" count. Use it.
+
+Symptoms that mean it's time for the checkpoint, even before turn 4:
+- The leader has named the core dimensions of this phase (e.g. for current-state: the gap, who's affected, what's been tried).
+- Your last two probes have produced consistent answers rather than new texture.
+- You catch yourself asking a question whose answer wouldn't actually change the picture.
+
+When those show up, do not ask another question. Issue the checkpoint. The leader has given you enough.
 
 You are currently in the following conversation phase:
 Phase: ${displayName}
@@ -1110,7 +1117,9 @@ Return your response as JSON in the following format:
       const isFirstTurnEver = chatHistory.length === 0;
       const isLastPhase = idx === seq.length - 1;
       const phasePosition = isFirstTurnEver ? "opening" : isLastPhase ? "closing" : "middle";
-      userContent += `Phase position: ${phasePosition}\n\n`;
+      // Count assistant turns already spent in this phase so the model can pace itself.
+      const turnsInThisPhase = chatHistory.filter((m) => m.role === "assistant" && m.phase === displayName).length + 1;
+      userContent += `Phase position: ${phasePosition}\nAssistant turns in this phase so far (including the one you're about to write): ${turnsInThisPhase}\n\n`;
       const recentAssistant = chatHistory.filter((m) => m.role === "assistant").slice(-2);
       const recentMovesLines = recentAssistant
         .map((m, i) => {
