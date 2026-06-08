@@ -1619,11 +1619,14 @@ Reply with one key only.`;
       return;
     }
     setLoading(true);
-    // Dismiss the intro modal up front so the user isn't staring at their question
-    // while compliance + classification + the first coaching call run in sequence.
+    // Dismiss the intro modal up front AND show the user's dilemma in the chat
+    // immediately, so they aren't staring at their question (or at nothing) while
+    // compliance + classification + the first coaching call run in sequence.
     // The intro draft hangs around until classification succeeds, so if compliance
-    // blocks we can reopen the modal with their text intact for a quick edit.
+    // blocks we can reopen the modal with their text intact for a quick edit and
+    // pull the optimistically-shown bubble back out.
     setShowIntroModal(false);
+    setChatHistory((prev) => [...prev, { role: "user", content: text }]);
     try {
       const userBlockCompliance = [
         `Dilemma: ${text}`,
@@ -1637,6 +1640,8 @@ Reply with one key only.`;
       if (!introComplianceOk) {
         setComplianceBlockModal(true);
         setShowIntroModal(true);
+        // Pull the optimistically-added user message back out so the modal reopens cleanly.
+        setChatHistory((prev) => prev.slice(0, -1));
         return;
       }
       setIntroDraft("");
@@ -1781,7 +1786,7 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
             setCurrentPhaseIndex(0);
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
-            setChatHistory((prev) => [...prev, { role: "user", content: text }]);
+            // User message was already pushed up front for optimistic display before compliance.
             await runCoachingTurn(text, arcDef.phase_sequence, 0, arc);
           }
         } catch {
@@ -1816,6 +1821,15 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
     if (!base || !selectedModel?.trim() || !ollamaUrl?.trim()) return;
     const enrichedDilemma = clarification ? `${base}\n\nClarification: ${clarification}` : base;
     setLoading(true);
+    // Show the leader's clarification in the chat immediately. The original dilemma is already
+    // sitting in chatHistory from submitIntro, so we only push the clarification text — combining
+    // them in the bubble would duplicate the dilemma the leader can already see.
+    let pushedClarification = false;
+    if (clarification) {
+      setChatHistory((prev) => [...prev, { role: "user", content: clarification }]);
+      pushedClarification = true;
+    }
+    setClarifyingInputValue("");
     try {
       const clarifyComplianceBlock = [
         `Dilemma: ${enrichedDilemma}`,
@@ -1827,9 +1841,10 @@ Reply with one key, or comma-separated keys plus a QUESTION: line when multiple 
       const clarifyComplianceOk = await checkComplianceAllows(`User: ${clarifyComplianceBlock}`);
       if (!clarifyComplianceOk) {
         setComplianceBlockModal(true);
+        // Pull the optimistically-added clarification bubble back out so the user can edit and retry.
+        if (pushedClarification) setChatHistory((prev) => prev.slice(0, -1));
         return;
       }
-      setClarifyingInputValue("");
       const arcsRes = await fetch(pathWithBase("/api/coaching/arcs"));
       if (!arcsRes.ok) {
         setArcClassificationResult({ arc: "ERROR", raw: "Failed to load coaching arcs" });
@@ -1922,7 +1937,9 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
             setCurrentPhaseIndex(0);
             setSessionFinished(false);
             setFinishedCallbackInvitation(null);
-            setChatHistory((prev) => [...prev, { role: "user", content: enrichedDilemma }]);
+            // The clarification was already pushed to chatHistory up front; runCoachingTurn still gets the full
+            // enrichedDilemma (original + clarification) so the model sees both, but only the clarification text
+            // shows as a user bubble — the original dilemma is already visible from submitIntro.
             await runCoachingTurn(enrichedDilemma, arcDef.phase_sequence, 0, arc);
           }
         } catch {
@@ -2167,11 +2184,7 @@ Reply with exactly one key. If nothing else fits, reply open_conversation.`;
             )}
             {arcClassificationResult && (arcClassificationResult.arcs?.length ?? 0) > 1 && (
               <>
-                {lastDilemmaForClarification.trim() && (
-                  <div className="chat-message user">
-                    <div className="chat-bubble">{lastDilemmaForClarification}</div>
-                  </div>
-                )}
+                {/* User's dilemma was already pushed to chatHistory up front during submitIntro, so it's rendered by the main map above. */}
                 <div className="chat-message assistant">
                   <div className="chat-bubble">
                     {arcClassificationResult.question ? (
