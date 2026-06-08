@@ -937,6 +937,11 @@ export function ChatView() {
       const objective = phaseDef.objective ?? "";
       const endingCriteria = phaseDef.ending_criteria ?? "";
       const callbackInvitation = phaseDef.callback_invitation ?? null;
+      // Look ahead one phase so the coaching model can bridge into it when it marks this one complete.
+      const nextPhaseMachineName = idx + 1 < seq.length ? seq[idx + 1] : null;
+      const nextPhaseDef = nextPhaseMachineName ? phasesList.find((p) => p.machine_name === nextPhaseMachineName) ?? null : null;
+      const nextDisplayName = nextPhaseDef?.display_name ?? nextPhaseMachineName ?? "";
+      const nextObjective = nextPhaseDef?.objective ?? "";
 
       let numberedChunks: NumberedChunk[] = [];
       const selectedRag = ragCollections.length > 0 && ragUrl.trim();
@@ -1037,11 +1042,22 @@ You are currently in the following conversation phase:
 Phase: ${displayName}
 Objective: ${objective}
 This phase is complete when: ${endingCriteria}
+${nextPhaseDef ? `
+The NEXT phase, when this one closes, will focus on:
+Next phase objective: ${nextObjective}` : `
+This is the final phase — when it closes, the session ends.`}
 
 A "Phase position" hint may be included in the user content (opening / middle / closing). Let it tilt your move selection:
 - opening: favor reflect, observe, frame — establish the territory before pushing.
 - middle: favor challenge, surface_contradiction, name_tension, thought_experiment — do the harder work.
 - closing: favor summarize, sit_with — consolidate before transitioning.
+
+PHASE TRANSITIONS — when you mark \`phase_complete: true\`, the response you write is the bridge from this phase to the next. Don't just close out the current phase and stop; end the response with a sentence or short question that naturally pivots the leader's attention toward the next phase's focus (as described above). Concretely:
+- Acknowledge what they've worked through (briefly — one phrase, not a recap).
+- Pivot to a piece of the next phase's territory that connects to what they just said.
+- Land on a single opening question or observation for the next phase.
+${nextPhaseDef ? `For example, if the next phase is about "${nextDisplayName}," the closing might be a question that opens that topic — not a generic "what's next?"` : `If this is the final phase, close with a synthesizing sentence rather than a bridge.`}
+Still: never name the phase in the prose ("Moving to Stakeholder Navigation"), never use the move names. The pivot is in the content, not the labels.
 
 In the \`response\` field (the prose the leader reads), do not name or label the internal conversation phase — avoid phrases like "In this phase," "Moving to [phase name]," or repeating the phase title. Speak naturally; phase metadata is only for your routing. Likewise, do not mention the move names ("reflect", "challenge", etc.) in the prose.
 
@@ -1150,9 +1166,7 @@ Return your response as JSON in the following format:
               .slice(0, 2)
           : [];
         const phaseComplete = !!claudeData.phase_complete;
-        const hasNext = idx + 1 < seq.length;
-        const nextPhaseMachineName = hasNext ? seq[idx + 1] : null;
-        const nextPhaseDef = nextPhaseMachineName ? phasesList.find((p) => p.machine_name === nextPhaseMachineName) ?? null : null;
+        const hasNext = !!nextPhaseDef;
         const phaseLabelForMessage = phaseComplete && nextPhaseDef ? (nextPhaseDef.display_name ?? nextPhaseMachineName!) : displayName;
 
         const arcMachine = arcOverride ?? coachingArc ?? undefined;
@@ -1493,6 +1507,10 @@ Reply with one key only.`;
         return;
       }
       setLoading(true);
+      // Show the user's message immediately so the chat doesn't feel frozen while compliance + RAG + coaching run.
+      const userMsg = { role: "user" as const, content: text };
+      setChatHistory((prev) => [...prev, userMsg]);
+      if (optionalMessage == null) setInputValue("");
       const historyBlob = chatHistory
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n\n");
@@ -1503,9 +1521,6 @@ Reply with one key only.`;
         setLoading(false);
         return;
       }
-      const userMsg = { role: "user" as const, content: text };
-      setChatHistory((prev) => [...prev, userMsg]);
-      if (optionalMessage == null) setInputValue("");
       try {
         await runCoachingTurn(text, phaseSequence, currentPhaseIndex);
       } finally {
@@ -1516,6 +1531,10 @@ Reply with one key only.`;
     }
     if (inOpenMode) {
       if (!selectedModel?.trim()) return;
+      // Show the user's message immediately so the chat doesn't feel frozen while compliance + RAG + coaching run.
+      const userMsg = { role: "user" as const, content: text };
+      setChatHistory((prev) => [...prev, userMsg]);
+      if (optionalMessage == null) setInputValue("");
       const historyBlob = chatHistory
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n\n");
@@ -1526,9 +1545,6 @@ Reply with one key only.`;
         setLoading(false);
         return;
       }
-      const userMsg = { role: "user" as const, content: text };
-      setChatHistory((prev) => [...prev, userMsg]);
-      if (optionalMessage == null) setInputValue("");
       // Reclassify mid-stream: if the conversation has now landed on a structured arc, switch into it.
       const reclassified = await tryReclassifyToArc(text);
       if (reclassified) {
